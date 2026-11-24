@@ -11,6 +11,7 @@ import psutil
 
 from modules.activity import LOG_PATH, read_recent, record
 from modules.privacy import load_privacy, save_privacy, redact
+from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
@@ -270,8 +271,8 @@ class WinToolKit(ctk.CTk):
         info = ctk.CTkFrame(self.content)
         info.pack(fill='x', padx=30, pady=25)
         details = [
-            ('Operating system', f'{platform.system()} {platform.release()}'),
-            ('Processor', platform.processor() or 'Unknown'),
+            ('Operating system', windows_name()),
+            ('Processor', cpu_name()),
             ('CPU cores', f'{psutil.cpu_count(logical=False) or "?"} physical / {psutil.cpu_count() or "?"} logical'),
             ('Total memory', f'{psutil.virtual_memory().total / (1024**3):.1f} GiB'),
             ('Computer', platform.node()),
