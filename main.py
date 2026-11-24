@@ -15,7 +15,7 @@ from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '0.7.0'
+VERSION = '0.8.0-dev'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('blue')
 
@@ -90,6 +90,14 @@ class WinToolKit(ctk.CTk):
         self.gpu_usage_label.pack(pady=2)
         self.vram_label = ctk.CTkLabel(self.content, text='VRAM: Checking...')
         self.vram_label.pack(pady=2)
+        self.gpu_temperature_label = ctk.CTkLabel(self.content, text='GPU temperature: Checking...')
+        self.gpu_temperature_label.pack(pady=2)
+        self.gpu_core_clock_label = ctk.CTkLabel(self.content, text='Core clock: Checking...')
+        self.gpu_core_clock_label.pack(pady=2)
+        self.gpu_memory_clock_label = ctk.CTkLabel(self.content, text='Memory clock: Checking...')
+        self.gpu_memory_clock_label.pack(pady=2)
+        self.gpu_power_label = ctk.CTkLabel(self.content, text='GPU power: Checking...')
+        self.gpu_power_label.pack(pady=2)
         self.games_label = ctk.CTkLabel(self.content, text='Known running games: Checking...', wraplength=680)
         self.games_label.pack(pady=8)
         self.latency_label = ctk.CTkLabel(self.content, text='TCP latency: Not tested')
@@ -107,7 +115,7 @@ class WinToolKit(ctk.CTk):
         ctk.CTkButton(self.content, text='Refresh Power Plans',
                       command=self.start_power_plan_refresh).pack(pady=4)
         ctk.CTkLabel(self.content,
-                     text='GPU load and VRAM monitoring currently support NVIDIA via nvidia-smi. '
+                     text='GPU metrics currently support NVIDIA via nvidia-smi. '
                           'Other adapters show their name, but live metrics may be unavailable. '
                           'Network test measures TCP connection time, not game ping.',
                      wraplength=680, text_color='gray70').pack(padx=25, pady=14)
@@ -414,6 +422,10 @@ class WinToolKit(ctk.CTk):
                         self.gpu_label.configure(text=f"GPU: {gpu['name']}")
                         self.gpu_usage_label.configure(text=f"GPU load: {gpu['utilization']}")
                         self.vram_label.configure(text=f"VRAM: {gpu['vram']}")
+                        self.gpu_temperature_label.configure(text=f"GPU temperature: {gpu['temperature']}")
+                        self.gpu_core_clock_label.configure(text=f"Core clock: {gpu['core_clock']}")
+                        self.gpu_memory_clock_label.configure(text=f"Memory clock: {gpu['memory_clock']}")
+                        self.gpu_power_label.configure(text=f"GPU power: {gpu['power']}")
                         text = '; '.join(f'{name} (PID {pid}, {mib} MiB RAM)' for name, pid, mib in games)
                         self.games_label.configure(text='Known running games: ' + (text or 'None detected'))
                 elif event[0] == 'gaming_error':
