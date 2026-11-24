@@ -2,10 +2,12 @@
 import os
 import platform
 import queue
+import sys
+from pathlib import Path
 import subprocess
 import threading
 from datetime import datetime
-from tkinter import messagebox
+from tkinter import TclError, messagebox
 
 import customtkinter as ctk
 import psutil
@@ -23,10 +25,22 @@ ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('blue')
 
 
+def resource_path(relative_path):
+    """Find bundled resources in PyInstaller and local development."""
+    base_path = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    return base_path / relative_path
+
+
 class WinToolKit(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title(f'WinToolKit v{VERSION}')
+        icon_path = resource_path(Path('assets') / 'icons' / 'wintoolkit.ico')
+        if icon_path.is_file():
+            try:
+                self.iconbitmap(str(icon_path))
+            except (OSError, TclError):
+                pass  # Keep the application usable if Windows rejects the icon.
         self.geometry('1120x760')
         self.minsize(900, 600)
         self.admin = is_admin()
