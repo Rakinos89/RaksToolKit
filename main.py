@@ -1,4 +1,4 @@
-"""WinToolKit v0.8: Windows dashboard, maintenance and gaming tools."""
+"""WinToolKit v0.9: Windows dashboard, maintenance and gaming tools."""
 import os
 import platform
 import queue
@@ -20,7 +20,7 @@ from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '0.8.0'
+VERSION = '0.9.0'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('blue')
 
