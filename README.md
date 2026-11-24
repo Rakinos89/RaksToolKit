@@ -2,109 +2,89 @@
 
 **A Windows maintenance, system monitoring, and gaming utility built with Python.**
 
-WinToolKit is an open-source desktop application designed to bring useful Windows system tools together in one modern, easy-to-use interface.
-
-The project is developed incrementally, with a focus on practical functionality, maintainable code, and continuous learning.
+WinToolKit is an open-source desktop application that brings practical Windows tools into one graphical interface. Development is incremental, with features tested before each release.
 
 ## Features
 
 ### System Dashboard
-
-- Live CPU and RAM usage monitoring
-- Disk usage monitoring
-- Hardware and operating system information
-- Dark-themed graphical interface
+- Live CPU, RAM, and C: drive usage monitoring
+- CPU model and core counts, total memory, and Windows version
+- Privacy-aware display of the computer name
 
 ### Windows Maintenance
-
-- DISM RestoreHealth
-- System File Checker (SFC)
+- DISM RestoreHealth and System File Checker (SFC)
 - DNS cache flushing
 - Administrator privilege detection and elevation
-- Background task execution with progress output
+- Background execution with task output
 
 ### Smart Cleanup
-
-- Scan user and Windows temporary directories
-- Identify temporary files older than 24 hours
-- Preview cleanup results with Dry Run
-- Confirm before deleting eligible files
-- Skip inaccessible files and symbolic links
+- Scan user and Windows temporary folders for files older than 24 hours
+- Preview eligible files and space using Scan or Dry Run
+- Confirm before deletion; skip inaccessible files and symbolic links
 
 ### Gaming & Performance
-
-- GPU adapter detection
-- NVIDIA GPU utilization and VRAM monitoring via `nvidia-smi`
+- NVIDIA GPU monitoring via `nvidia-smi`, including utilization, temperature, VRAM, clocks, and power where available
+- Automatic GPU updates every two seconds on the Gaming page
+- Scrollable dashboard with GPU metric cards and usage bars
 - Detection of selected running game processes
-- Windows power plan management
-- TCP network latency testing
+- Windows power plan management and TCP connection latency testing
+- Modular monitoring code designed for future GPU vendor support; AMD monitoring is not yet verified
+
+### Privacy Mode
+- Settings toggle to mask supported computer name, username, and IPv4 text displayed in the app
+- Preference persists between restarts
+- Display masking is not complete anonymization; logs and external applications are not automatically redacted
 
 ### Activity Logging
-
-- Persistent maintenance activity history
+- Persistent local maintenance activity history
 - Task results and error reporting
-- Logs stored locally outside the repository
 
 ## Requirements
-
 - Windows 10 or Windows 11
 - Python 3.10 or newer
-- CustomTkinter
-- psutil
+- Dependencies listed in `requirements.txt`
+- NVIDIA GPU metrics require a compatible NVIDIA driver and `nvidia-smi`; other adapters may show unavailable metrics
 
-Some system maintenance operations require administrator privileges.
+Some maintenance operations require administrator privileges.
 
 ## Screenshots
 
+*Screenshots below were captured during earlier development and may not reflect the latest v0.8 interface.*
+
 ### Dashboard
-
-Live system monitoring with CPU, RAM, disk usage, and hardware information.
-
 ![WinToolKit Dashboard](assets/screenshots/wintoolkit_dashboard.png)
 
 ### Maintenance
-
-Windows repair utilities, Smart Cleanup, and activity logging.
-
 ![WinToolKit Maintenance](assets/screenshots/wintoolkit_maintenance.png)
 
 ### Gaming
-
-GPU information, game process detection, power plans, and network latency tools.
-
 ![WinToolKit Gaming](assets/screenshots/wintoolkit_gaming.png)
 
 ## Installation
 
 Clone the repository:
 
-```bash
+```powershell
 git clone https://github.com/Rakinos89/WinToolKit.git
 cd WinToolKit
 ```
 
 Create a virtual environment:
 
-```bash
+```powershell
 python -m venv .venv
 ```
 
-Activate it in PowerShell:
+Install dependencies without requiring PowerShell script activation:
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Install dependencies:
+Launch:
 
-```bash
-pip install -r requirements.txt
-```
-
-Launch WinToolKit:
-
-```bash
-python main.py
+```powershell
+.\.venv\Scripts\python.exe main.py
 ```
 
 ## Development Roadmap
@@ -116,21 +96,21 @@ python main.py
 | v0.5 | Smart Cleanup | Complete |
 | v0.6 | Improved UI and activity logging | Complete |
 | v0.7 | Gaming and performance tools | Complete |
-| v0.8 | AMD GPU monitoring and gaming dashboard improvements | Planned |
+| v0.8 | Extended NVIDIA monitoring, live Gaming dashboard, Privacy Mode, CPU identification | Complete |
+| Future | AMD GPU monitoring and additional hardware support | Planned |
 
 ## Technology Stack
-
 - **Python:** Application logic
 - **CustomTkinter:** Desktop interface
 - **psutil:** System and process monitoring
-- **Windows utilities:** System diagnostics and maintenance
+- **Windows utilities:** Diagnostics and maintenance
 - **Git & GitHub:** Version control
 
 ## Project Status
 
-**Current version: v0.7**
+**Current version: v0.8.0**
 
-WinToolKit is actively being developed. Features are tested incrementally, and additional functionality is planned for future releases.
+WinToolKit is actively developed and tested incrementally. GPU monitoring availability varies by hardware and driver.
 
 ## Disclaimer
 

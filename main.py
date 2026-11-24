@@ -1,4 +1,4 @@
-"""WinToolKit v0.7: Windows dashboard, maintenance and gaming tools."""
+"""WinToolKit v0.8: Windows dashboard, maintenance and gaming tools."""
 import os
 import platform
 import queue
@@ -10,12 +10,14 @@ import customtkinter as ctk
 import psutil
 
 from modules.activity import LOG_PATH, read_recent, record
+from modules.privacy import load_privacy, save_privacy, redact
+from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '0.7.0'
+VERSION = '0.8.0'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('blue')
 
@@ -27,6 +29,7 @@ class WinToolKit(ctk.CTk):
         self.geometry('1120x760')
         self.minsize(900, 600)
         self.admin = is_admin()
+        self.privacy_mode = load_privacy()
         self.events = queue.Queue()
         self.running_task = None
         self.current_page = 'Dashboard'
@@ -55,6 +58,7 @@ class WinToolKit(ctk.CTk):
         self.content.grid(row=0, column=1, padx=15, pady=15, sticky='nsew')
         self.show_page('Dashboard')
         self.after(1000, self.refresh_stats)
+        self.after(2000, self.refresh_gaming_live)
         self.after(100, self.process_events)
 
     def show_page(self, page):
@@ -73,46 +77,125 @@ class WinToolKit(ctk.CTk):
         elif page == 'Activity':
             self.build_activity()
         elif page == 'Settings':
-            ctk.CTkLabel(self.content, text=f'WinToolKit version {VERSION}').pack(pady=12)
-            ctk.CTkLabel(self.content, text=f'Activity log: {LOG_PATH}', wraplength=650).pack(pady=12)
+            self.build_settings()
         else:
             ctk.CTkLabel(self.content, text=f'{page} tools coming in a future release.').pack(pady=25)
 
+    def display_text(self, value):
+        return redact(value, self.privacy_mode)
+
+    def build_settings(self):
+        ctk.CTkLabel(self.content, text='Privacy & Preferences', font=('Segoe UI',19,'bold')).pack(pady=(8,15))
+        switch=ctk.CTkSwitch(self.content,text='Privacy Mode',command=self.change_privacy_mode)
+        switch.pack(pady=12)
+        self.privacy_switch=switch
+        if self.privacy_mode: switch.select()
+        ctk.CTkLabel(self.content,text='Hide the computer name, Windows username, and IPv4 addresses in displayed information.',wraplength=600).pack(pady=8)
+        ctk.CTkLabel(self.content,text='This does not erase existing logs, hide other applications, or guarantee that every identifier is masked.',wraplength=600,text_color='gray70').pack(pady=8)
+        ctk.CTkLabel(self.content,text=f'WinToolKit version {VERSION}').pack(pady=12)
+        ctk.CTkLabel(self.content,text=self.display_text(f'Activity log: {LOG_PATH}'),wraplength=650).pack(pady=12)
+
+    def change_privacy_mode(self):
+        enabled=bool(self.privacy_switch.get())
+        try: save_privacy(enabled)
+        except OSError as exc:
+            messagebox.showerror('Could not save setting',str(exc))
+            if self.privacy_mode: self.privacy_switch.select()
+            else: self.privacy_switch.deselect()
+            return
+        self.privacy_mode=enabled
+        self.show_page('Settings')
+
     def build_gaming(self):
-        """Gaming diagnostics. All slow system calls run off the UI thread."""
-        ctk.CTkLabel(self.content, text='Gaming & Performance',
-                     font=('Segoe UI', 18, 'bold')).pack(pady=(0, 10))
-        self.gaming_status = ctk.CTkLabel(self.content, text='Ready to check gaming performance.')
-        self.gaming_status.pack(pady=5)
-        self.gpu_label = ctk.CTkLabel(self.content, text='GPU: Checking...', wraplength=680)
-        self.gpu_label.pack(pady=4)
-        self.gpu_usage_label = ctk.CTkLabel(self.content, text='GPU load: Checking...')
-        self.gpu_usage_label.pack(pady=2)
-        self.vram_label = ctk.CTkLabel(self.content, text='VRAM: Checking...')
-        self.vram_label.pack(pady=2)
-        self.games_label = ctk.CTkLabel(self.content, text='Known running games: Checking...', wraplength=680)
-        self.games_label.pack(pady=8)
-        self.latency_label = ctk.CTkLabel(self.content, text='TCP latency: Not tested')
+        """Scrollable gaming dashboard with asynchronous GPU sampling."""
+        scroll = ctk.CTkScrollableFrame(self.content, fg_color='transparent')
+        scroll.pack(fill='both', expand=True, padx=12, pady=(0, 10))
+        ctk.CTkLabel(scroll, text='Gaming & Performance',
+                     font=('Segoe UI', 19, 'bold')).pack(pady=(0, 5))
+        self.gpu_label = ctk.CTkLabel(scroll, text='Detecting GPU...',
+                                      font=('Segoe UI', 15, 'bold'), wraplength=690)
+        self.gpu_label.pack(pady=(0, 5))
+        self.gaming_status = ctk.CTkLabel(scroll, text='Live GPU updates every 2 seconds',
+                                          text_color='gray70')
+        self.gaming_status.pack(pady=(0, 12))
+
+        metrics = ctk.CTkFrame(scroll, fg_color='transparent')
+        metrics.pack(fill='x', padx=12)
+        metrics.grid_columnconfigure((0, 1), weight=1, uniform='gpu')
+        self.gpu_metric_values = {}
+        self.gpu_metric_bars = {}
+        specs = [('utilization', 'GPU Load'), ('temperature', 'Temperature'),
+                 ('vram', 'VRAM Usage'), ('power', 'Power Draw')]
+        for index, (key, heading) in enumerate(specs):
+            card = ctk.CTkFrame(metrics, corner_radius=12)
+            card.grid(row=index // 2, column=index % 2, padx=7, pady=7, sticky='nsew')
+            ctk.CTkLabel(card, text=heading, text_color='gray75').pack(pady=(12, 2))
+            value = ctk.CTkLabel(card, text='Checking...', font=('Segoe UI', 20, 'bold'))
+            value.pack(pady=(0, 8))
+            self.gpu_metric_values[key] = value
+            if key in ('utilization', 'vram'):
+                bar = ctk.CTkProgressBar(card)
+                bar.pack(fill='x', padx=18, pady=(0, 14))
+                bar.set(0)
+                self.gpu_metric_bars[key] = bar
+            else:
+                ctk.CTkLabel(card, text='').pack(pady=(0, 8))
+
+        clocks = ctk.CTkFrame(scroll)
+        clocks.pack(fill='x', padx=19, pady=(8, 12))
+        self.gpu_core_clock_label = ctk.CTkLabel(clocks, text='Core clock: Checking...')
+        self.gpu_core_clock_label.pack(side='left', expand=True, padx=8, pady=10)
+        self.gpu_memory_clock_label = ctk.CTkLabel(clocks, text='Memory clock: Checking...')
+        self.gpu_memory_clock_label.pack(side='left', expand=True, padx=8, pady=10)
+
+        ctk.CTkLabel(scroll, text='Gaming Utilities',
+                     font=('Segoe UI', 17, 'bold')).pack(pady=(8, 6))
+        self.games_label = ctk.CTkLabel(scroll, text='Known running games: Checking...', wraplength=690)
+        self.games_label.pack(pady=5)
+        self.latency_label = ctk.CTkLabel(scroll, text='TCP latency: Not tested')
         self.latency_label.pack(pady=5)
-        ctk.CTkButton(self.content, text='Test Network Latency (1.1.1.1:443)',
-                      command=self.start_latency_test).pack(pady=5)
-        ctk.CTkButton(self.content, text='Refresh GPU and Game Processes',
-                      command=self.start_gaming_refresh).pack(pady=5)
-        ctk.CTkLabel(self.content, text='Windows Power Plan',
-                     font=('Segoe UI', 17, 'bold')).pack(pady=(14, 6))
-        self.power_plan_menu = ctk.CTkOptionMenu(self.content, values=['Loading...'])
+        actions = ctk.CTkFrame(scroll, fg_color='transparent')
+        actions.pack(pady=5)
+        ctk.CTkButton(actions, text='Test TCP Latency',
+                      command=self.start_latency_test).pack(side='left', padx=5)
+        ctk.CTkButton(actions, text='Refresh Now',
+                      command=self.start_gaming_refresh).pack(side='left', padx=5)
+        ctk.CTkLabel(scroll, text='Windows Power Plan',
+                     font=('Segoe UI', 16, 'bold')).pack(pady=(14, 6))
+        self.power_plan_menu = ctk.CTkOptionMenu(scroll, values=['Loading...'], width=300)
         self.power_plan_menu.pack(pady=4)
-        ctk.CTkButton(self.content, text='Apply Selected Power Plan',
-                      command=self.request_power_plan).pack(pady=5)
-        ctk.CTkButton(self.content, text='Refresh Power Plans',
+        ctk.CTkButton(scroll, text='Apply Selected Power Plan',
+                      command=self.request_power_plan).pack(pady=4)
+        ctk.CTkButton(scroll, text='Refresh Power Plans',
                       command=self.start_power_plan_refresh).pack(pady=4)
-        ctk.CTkLabel(self.content,
-                     text='GPU load and VRAM monitoring currently support NVIDIA via nvidia-smi. '
-                          'Other adapters show their name, but live metrics may be unavailable. '
-                          'Network test measures TCP connection time, not game ping.',
-                     wraplength=680, text_color='gray70').pack(padx=25, pady=14)
+        ctk.CTkLabel(scroll,
+                     text='GPU metrics use NVIDIA nvidia-smi when available. Other vendors may show '
+                          'unavailable metrics. TCP latency is not in-game ping.',
+                     wraplength=690, text_color='gray70').pack(padx=25, pady=(14, 20))
         self.start_gaming_refresh()
         self.start_power_plan_refresh()
+
+    @staticmethod
+    def _gpu_fraction(value):
+        try:
+            return max(0.0, min(1.0, float(value.rstrip('%')) / 100))
+        except (ValueError, AttributeError):
+            return 0.0
+
+    def update_gpu_cards(self, gpu):
+        self.gpu_label.configure(text=self.display_text(gpu['name']))
+        for key in ('utilization', 'temperature', 'vram', 'power'):
+            self.gpu_metric_values[key].configure(text=self.display_text(gpu.get(key, 'Unavailable')))
+        self.gpu_metric_bars['utilization'].set(self._gpu_fraction(gpu['utilization']))
+        try:
+            used, total = gpu['vram'].split(' / ')
+            total = total.split()[0]
+            fraction = float(used) / float(total)
+        except (ValueError, ZeroDivisionError, AttributeError):
+            fraction = 0.0
+        self.gpu_metric_bars['vram'].set(max(0.0, min(1.0, fraction)))
+        self.gpu_core_clock_label.configure(text=f"Core clock: {gpu['core_clock']}")
+        self.gpu_memory_clock_label.configure(text=f"Memory clock: {gpu['memory_clock']}")
 
     def start_gaming_refresh(self):
         if self.gaming_busy:
@@ -188,8 +271,8 @@ class WinToolKit(ctk.CTk):
         info = ctk.CTkFrame(self.content)
         info.pack(fill='x', padx=30, pady=25)
         details = [
-            ('Operating system', f'{platform.system()} {platform.release()}'),
-            ('Processor', platform.processor() or 'Unknown'),
+            ('Operating system', windows_name()),
+            ('Processor', cpu_name()),
             ('CPU cores', f'{psutil.cpu_count(logical=False) or "?"} physical / {psutil.cpu_count() or "?"} logical'),
             ('Total memory', f'{psutil.virtual_memory().total / (1024**3):.1f} GiB'),
             ('Computer', platform.node()),
@@ -198,7 +281,7 @@ class WinToolKit(ctk.CTk):
             row = ctk.CTkFrame(info, fg_color='transparent')
             row.pack(fill='x', padx=18, pady=5)
             ctk.CTkLabel(row, text=title + ':', width=160, anchor='w').pack(side='left')
-            ctk.CTkLabel(row, text=value, anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
+            ctk.CTkLabel(row, text=self.display_text(value), anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
 
     def update_dashboard(self):
         if self.current_page != 'Dashboard':
@@ -210,6 +293,12 @@ class WinToolKit(ctk.CTk):
             label, bar = self.stats[name]
             label.configure(text=f'{value:.1f}%')
             bar.set(value / 100)
+
+    def refresh_gaming_live(self):
+        """Poll only while the Gaming page is visible; never overlap workers."""
+        if self.current_page == 'Gaming' and not self.gaming_busy:
+            self.start_gaming_refresh()
+        self.after(2000, self.refresh_gaming_live)
 
     def refresh_stats(self):
         if self.current_page == 'Dashboard':
@@ -230,7 +319,7 @@ class WinToolKit(ctk.CTk):
         self.tab_content.pack(fill='x', padx=15, pady=5)
         self.maintenance_output = ctk.CTkTextbox(self.content, height=220)
         self.maintenance_output.pack(fill='both', expand=True, padx=20, pady=(8, 20))
-        self.maintenance_output.insert('end', '\n'.join(self.maintenance_log) + '\n')
+        self.maintenance_output.insert('end', self.display_text('\n'.join(self.maintenance_log)) + '\n')
         self.maintenance_output.configure(state='disabled')
         self.maintenance_output.see('end')
         tabs.set(self.current_tab)
@@ -287,7 +376,7 @@ class WinToolKit(ctk.CTk):
             pass  # Logging failure must not interrupt maintenance.
         if self.current_page == 'Maintenance':
             self.maintenance_output.configure(state='normal')
-            self.maintenance_output.insert('end', line + '\n')
+            self.maintenance_output.insert('end', self.display_text(line) + '\n')
             self.maintenance_output.see('end')
             self.maintenance_output.configure(state='disabled')
 
@@ -306,7 +395,7 @@ class WinToolKit(ctk.CTk):
             content = f'Unable to read log: {exc}'
         self.activity_output.configure(state='normal')
         self.activity_output.delete('1.0', 'end')
-        self.activity_output.insert('end', content)
+        self.activity_output.insert('end', self.display_text(content))
         self.activity_output.see('end')
         self.activity_output.configure(state='disabled')
 
@@ -411,18 +500,16 @@ class WinToolKit(ctk.CTk):
                     _, gpu, games = event
                     if self.current_page == 'Gaming':
                         self.gaming_status.configure(text='Gaming diagnostics updated.')
-                        self.gpu_label.configure(text=f"GPU: {gpu['name']}")
-                        self.gpu_usage_label.configure(text=f"GPU load: {gpu['utilization']}")
-                        self.vram_label.configure(text=f"VRAM: {gpu['vram']}")
+                        self.update_gpu_cards(gpu)
                         text = '; '.join(f'{name} (PID {pid}, {mib} MiB RAM)' for name, pid, mib in games)
-                        self.games_label.configure(text='Known running games: ' + (text or 'None detected'))
+                        self.games_label.configure(text=self.display_text('Known running games: ' + (text or 'None detected')))
                 elif event[0] == 'gaming_error':
                     self.gaming_busy = False
                     if self.current_page == 'Gaming':
-                        self.gaming_status.configure(text=f'Diagnostics: {event[1]}')
+                        self.gaming_status.configure(text=self.display_text(f'Diagnostics: {event[1]}'))
                 elif event[0] == 'latency':
                     if self.current_page == 'Gaming':
-                        self.latency_label.configure(text=f'TCP latency: {event[1]}')
+                        self.latency_label.configure(text=self.display_text(f'TCP latency: {event[1]}'))
                 elif event[0] == 'power_plans':
                     plans = event[1]
                     self.gaming_plans = {f'{name} [{guid[:8]}]': guid for guid, name, active in plans}

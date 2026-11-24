@@ -21,37 +21,7 @@ GAME_EXECUTABLES = {
 GAME_EXECUTABLES -= {'steam.exe', 'steamwebhelper.exe', 'game.exe'}
 
 
-def gpu_info():
-    """GPU adapter name from Windows; NVIDIA metrics when nvidia-smi exists."""
-    info = {'name': 'Unavailable', 'utilization': 'Unavailable',
-            'vram': 'Unavailable (vendor monitoring required)'}
-    try:
-        result = subprocess.run(
-            ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
-             'Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name | ConvertTo-Json -Compress'],
-            capture_output=True, text=True, errors='replace', timeout=12,
-            creationflags=NO_WINDOW)
-        if result.returncode == 0 and result.stdout.strip():
-            names = json.loads(result.stdout.strip())
-            if isinstance(names, str):
-                names = [names]
-            info['name'] = ', '.join(str(n) for n in names if n) or 'Unavailable'
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        pass
-    if shutil.which('nvidia-smi'):
-        try:
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,memory.total',
-                 '--format=csv,noheader,nounits'], capture_output=True, text=True,
-                errors='replace', timeout=5, creationflags=NO_WINDOW)
-            if result.returncode == 0 and result.stdout.strip():
-                fields = [x.strip() for x in result.stdout.splitlines()[0].split(',')]
-                if len(fields) == 3:
-                    info['utilization'] = f'{fields[0]}%'
-                    info['vram'] = f'{fields[1]} / {fields[2]} MiB'
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    return info
+from modules.gpu_monitor import gpu_info
 
 
 def game_processes():
