@@ -2,7 +2,7 @@
 
 **A Windows maintenance, system monitoring, and gaming utility built with Python.**
 
-WinToolKit is an open-source desktop application that brings practical Windows tools into one graphical interface. Development is incremental, with features tested before each release.
+WinToolKit is an open-source desktop application that brings practical Windows tools into one graphical interface. Development is incremental, with features tested before each release. Windows users can download a portable build without installing Python.
 
 ## Features
 
@@ -40,9 +40,8 @@ WinToolKit is an open-source desktop application that brings practical Windows t
 - Task results and error reporting
 
 ## Requirements
-- Windows 10 or Windows 11
-- Python 3.10 or newer
-- Dependencies listed in `requirements.txt`
+- Windows 10 or Windows 11 (64-bit)
+- For source-code use only: Python 3.10 or newer and dependencies in `requirements.txt`
 - NVIDIA GPU metrics require a compatible NVIDIA driver and `nvidia-smi`; other adapters may show unavailable metrics
 
 Some maintenance operations require administrator privileges.
@@ -60,7 +59,16 @@ Some maintenance operations require administrator privileges.
 ### Gaming
 ![WinToolKit Gaming](assets/screenshots/wintoolkit_gaming.png)
 
-## Installation
+## Download and Run (Windows)
+
+1. Open the [GitHub Releases page](https://github.com/Rakinos89/WinToolKit/releases/latest).
+2. Download `WinToolKit-v0.9.0-Windows-x64.zip` from **Assets** (not the automatically generated source-code archive).
+3. Extract the entire ZIP to a folder of your choice.
+4. Open the extracted `WinToolKit` folder and double-click `WinToolKit.exe`. Keep the `_internal` folder beside the executable.
+
+The portable build does not require a separate Python installation. Some maintenance features request administrator privileges. Download only from the official repository; Windows may show a security warning for an unsigned executable.
+
+## Installation from Source (Developers)
 
 Clone the repository:
 
@@ -97,7 +105,18 @@ Launch:
 | v0.6 | Improved UI and activity logging | Complete |
 | v0.7 | Gaming and performance tools | Complete |
 | v0.8 | Extended NVIDIA monitoring, live Gaming dashboard, Privacy Mode, CPU identification | Complete |
+| v0.9 | Portable Windows executable, application icon, distribution ZIP, refresh feedback | Complete |
 | Future | AMD GPU monitoring and additional hardware support | Planned |
+
+## Building a Windows Release
+
+From the repository root, on Windows with a configured `.venv`:
+
+```powershell
+.\build.ps1
+```
+
+The script installs/uses PyInstaller from the virtual environment, bundles the icon, builds the executable, and writes the ZIP plus a SHA-256 checksum into `dist`. It does not upload or publish a GitHub release. The icon must exist at `assets/icons/wintoolkit.ico`.
 
 ## Technology Stack
 - **Python:** Application logic
@@ -108,7 +127,7 @@ Launch:
 
 ## Project Status
 
-**Current version: v0.8.0**
+**Current version: v0.9.0**
 
 WinToolKit is actively developed and tested incrementally. GPU monitoring availability varies by hardware and driver.
 
@@ -118,4 +137,4 @@ WinToolKit is an independent development project. System maintenance and cleanup
 
 ## License
 
-No license has been selected yet.
+No license has been selected yet. The repository is publicly viewable, but reuse and redistribution permissions have not been granted through an open-source license.

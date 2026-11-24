@@ -1,10 +1,13 @@
-"""WinToolKit v0.8: Windows dashboard, maintenance and gaming tools."""
+"""WinToolKit v0.9: Windows dashboard, maintenance and gaming tools."""
 import os
 import platform
 import queue
+import sys
+from pathlib import Path
 import subprocess
 import threading
-from tkinter import messagebox
+from datetime import datetime
+from tkinter import TclError, messagebox
 
 import customtkinter as ctk
 import psutil
@@ -17,15 +20,27 @@ from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '0.8.0'
+VERSION = '0.9.0'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('blue')
+
+
+def resource_path(relative_path):
+    """Find bundled resources in PyInstaller and local development."""
+    base_path = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    return base_path / relative_path
 
 
 class WinToolKit(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title(f'WinToolKit v{VERSION}')
+        icon_path = resource_path(Path('assets') / 'icons' / 'wintoolkit.ico')
+        if icon_path.is_file():
+            try:
+                self.iconbitmap(str(icon_path))
+            except (OSError, TclError):
+                pass  # Keep the application usable if Windows rejects the icon.
         self.geometry('1120x760')
         self.minsize(900, 600)
         self.admin = is_admin()
@@ -384,6 +399,8 @@ class WinToolKit(ctk.CTk):
         ctk.CTkLabel(self.content, text='Saved activity history',
                      font=('Segoe UI', 17, 'bold')).pack(pady=8)
         ctk.CTkButton(self.content, text='Refresh History', command=self.refresh_activity).pack(pady=5)
+        self.activity_status = ctk.CTkLabel(self.content, text='Loading history...', text_color='gray70')
+        self.activity_status.pack(pady=(0, 2))
         self.activity_output = ctk.CTkTextbox(self.content)
         self.activity_output.pack(fill='both', expand=True, padx=20, pady=15)
         self.refresh_activity()
@@ -391,8 +408,11 @@ class WinToolKit(ctk.CTk):
     def refresh_activity(self):
         try:
             content = read_recent()
+            status = f'History refreshed at {datetime.now():%H:%M:%S} | {len(content.splitlines())} displayed lines'
         except OSError as exc:
             content = f'Unable to read log: {exc}'
+            status = 'History refresh failed'
+        self.activity_status.configure(text=status)
         self.activity_output.configure(state='normal')
         self.activity_output.delete('1.0', 'end')
         self.activity_output.insert('end', self.display_text(content))
