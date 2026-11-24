@@ -10,6 +10,7 @@ import customtkinter as ctk
 import psutil
 
 from modules.activity import LOG_PATH, read_recent, record
+from modules.privacy import load_privacy, save_privacy, redact
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
@@ -27,6 +28,7 @@ class WinToolKit(ctk.CTk):
         self.geometry('1120x760')
         self.minsize(900, 600)
         self.admin = is_admin()
+        self.privacy_mode = load_privacy()
         self.events = queue.Queue()
         self.running_task = None
         self.current_page = 'Dashboard'
@@ -74,10 +76,34 @@ class WinToolKit(ctk.CTk):
         elif page == 'Activity':
             self.build_activity()
         elif page == 'Settings':
-            ctk.CTkLabel(self.content, text=f'WinToolKit version {VERSION}').pack(pady=12)
-            ctk.CTkLabel(self.content, text=f'Activity log: {LOG_PATH}', wraplength=650).pack(pady=12)
+            self.build_settings()
         else:
             ctk.CTkLabel(self.content, text=f'{page} tools coming in a future release.').pack(pady=25)
+
+    def display_text(self, value):
+        return redact(value, self.privacy_mode)
+
+    def build_settings(self):
+        ctk.CTkLabel(self.content, text='Privacy & Preferences', font=('Segoe UI',19,'bold')).pack(pady=(8,15))
+        switch=ctk.CTkSwitch(self.content,text='Privacy Mode',command=self.change_privacy_mode)
+        switch.pack(pady=12)
+        self.privacy_switch=switch
+        if self.privacy_mode: switch.select()
+        ctk.CTkLabel(self.content,text='Hide the computer name, Windows username, and IPv4 addresses in displayed information.',wraplength=600).pack(pady=8)
+        ctk.CTkLabel(self.content,text='This does not erase existing logs, hide other applications, or guarantee that every identifier is masked.',wraplength=600,text_color='gray70').pack(pady=8)
+        ctk.CTkLabel(self.content,text=f'WinToolKit version {VERSION}').pack(pady=12)
+        ctk.CTkLabel(self.content,text=self.display_text(f'Activity log: {LOG_PATH}'),wraplength=650).pack(pady=12)
+
+    def change_privacy_mode(self):
+        enabled=bool(self.privacy_switch.get())
+        try: save_privacy(enabled)
+        except OSError as exc:
+            messagebox.showerror('Could not save setting',str(exc))
+            if self.privacy_mode: self.privacy_switch.select()
+            else: self.privacy_switch.deselect()
+            return
+        self.privacy_mode=enabled
+        self.show_page('Settings')
 
     def build_gaming(self):
         """Scrollable gaming dashboard with asynchronous GPU sampling."""
@@ -156,9 +182,9 @@ class WinToolKit(ctk.CTk):
             return 0.0
 
     def update_gpu_cards(self, gpu):
-        self.gpu_label.configure(text=gpu['name'])
+        self.gpu_label.configure(text=self.display_text(gpu['name']))
         for key in ('utilization', 'temperature', 'vram', 'power'):
-            self.gpu_metric_values[key].configure(text=gpu.get(key, 'Unavailable'))
+            self.gpu_metric_values[key].configure(text=self.display_text(gpu.get(key, 'Unavailable')))
         self.gpu_metric_bars['utilization'].set(self._gpu_fraction(gpu['utilization']))
         try:
             used, total = gpu['vram'].split(' / ')
@@ -254,7 +280,7 @@ class WinToolKit(ctk.CTk):
             row = ctk.CTkFrame(info, fg_color='transparent')
             row.pack(fill='x', padx=18, pady=5)
             ctk.CTkLabel(row, text=title + ':', width=160, anchor='w').pack(side='left')
-            ctk.CTkLabel(row, text=value, anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
+            ctk.CTkLabel(row, text=self.display_text(value), anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
 
     def update_dashboard(self):
         if self.current_page != 'Dashboard':
@@ -292,7 +318,7 @@ class WinToolKit(ctk.CTk):
         self.tab_content.pack(fill='x', padx=15, pady=5)
         self.maintenance_output = ctk.CTkTextbox(self.content, height=220)
         self.maintenance_output.pack(fill='both', expand=True, padx=20, pady=(8, 20))
-        self.maintenance_output.insert('end', '\n'.join(self.maintenance_log) + '\n')
+        self.maintenance_output.insert('end', self.display_text('\n'.join(self.maintenance_log)) + '\n')
         self.maintenance_output.configure(state='disabled')
         self.maintenance_output.see('end')
         tabs.set(self.current_tab)
@@ -349,7 +375,7 @@ class WinToolKit(ctk.CTk):
             pass  # Logging failure must not interrupt maintenance.
         if self.current_page == 'Maintenance':
             self.maintenance_output.configure(state='normal')
-            self.maintenance_output.insert('end', line + '\n')
+            self.maintenance_output.insert('end', self.display_text(line) + '\n')
             self.maintenance_output.see('end')
             self.maintenance_output.configure(state='disabled')
 
@@ -368,7 +394,7 @@ class WinToolKit(ctk.CTk):
             content = f'Unable to read log: {exc}'
         self.activity_output.configure(state='normal')
         self.activity_output.delete('1.0', 'end')
-        self.activity_output.insert('end', content)
+        self.activity_output.insert('end', self.display_text(content))
         self.activity_output.see('end')
         self.activity_output.configure(state='disabled')
 
@@ -475,14 +501,14 @@ class WinToolKit(ctk.CTk):
                         self.gaming_status.configure(text='Gaming diagnostics updated.')
                         self.update_gpu_cards(gpu)
                         text = '; '.join(f'{name} (PID {pid}, {mib} MiB RAM)' for name, pid, mib in games)
-                        self.games_label.configure(text='Known running games: ' + (text or 'None detected'))
+                        self.games_label.configure(text=self.display_text('Known running games: ' + (text or 'None detected')))
                 elif event[0] == 'gaming_error':
                     self.gaming_busy = False
                     if self.current_page == 'Gaming':
-                        self.gaming_status.configure(text=f'Diagnostics: {event[1]}')
+                        self.gaming_status.configure(text=self.display_text(f'Diagnostics: {event[1]}'))
                 elif event[0] == 'latency':
                     if self.current_page == 'Gaming':
-                        self.latency_label.configure(text=f'TCP latency: {event[1]}')
+                        self.latency_label.configure(text=self.display_text(f'TCP latency: {event[1]}'))
                 elif event[0] == 'power_plans':
                     plans = event[1]
                     self.gaming_plans = {f'{name} [{guid[:8]}]': guid for guid, name, active in plans}
