@@ -4,6 +4,7 @@ import platform
 import queue
 import subprocess
 import threading
+from datetime import datetime
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -384,6 +385,8 @@ class WinToolKit(ctk.CTk):
         ctk.CTkLabel(self.content, text='Saved activity history',
                      font=('Segoe UI', 17, 'bold')).pack(pady=8)
         ctk.CTkButton(self.content, text='Refresh History', command=self.refresh_activity).pack(pady=5)
+        self.activity_status = ctk.CTkLabel(self.content, text='Loading history...', text_color='gray70')
+        self.activity_status.pack(pady=(0, 2))
         self.activity_output = ctk.CTkTextbox(self.content)
         self.activity_output.pack(fill='both', expand=True, padx=20, pady=15)
         self.refresh_activity()
@@ -391,8 +394,11 @@ class WinToolKit(ctk.CTk):
     def refresh_activity(self):
         try:
             content = read_recent()
+            status = f'History refreshed at {datetime.now():%H:%M:%S} | {len(content.splitlines())} displayed lines'
         except OSError as exc:
             content = f'Unable to read log: {exc}'
+            status = 'History refresh failed'
+        self.activity_status.configure(text=status)
         self.activity_output.configure(state='normal')
         self.activity_output.delete('1.0', 'end')
         self.activity_output.insert('end', self.display_text(content))
