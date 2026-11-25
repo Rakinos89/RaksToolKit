@@ -52,9 +52,13 @@ class WinToolKit(ctk.CTk):
         self.cleanup_selection = {}
         self.cleanup_scan = None
         self.maintenance_log = ['Ready to run maintenance tasks.']
+        self.maintenance_state = ('Ready for maintenance tasks.', 'gray70')
         self.task_buttons = []
         self.gaming_busy = False
         self.gaming_plans = {}
+        self.power_plan_status = ('Power plan: Ready.', 'gray70')
+        self.power_plan_refresh_busy = False
+        self.power_plan_buttons = []
         self.last_gaming_refresh = 0
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -179,10 +183,17 @@ class WinToolKit(ctk.CTk):
                      font=('Segoe UI', 16, 'bold')).pack(pady=(14, 6))
         self.power_plan_menu = ctk.CTkOptionMenu(scroll, values=['Loading...'], width=300)
         self.power_plan_menu.pack(pady=4)
-        ctk.CTkButton(scroll, text='Apply Selected Power Plan',
-                      command=self.request_power_plan).pack(pady=4)
-        ctk.CTkButton(scroll, text='Refresh Power Plans',
-                      command=self.start_power_plan_refresh).pack(pady=4)
+        apply_button = ctk.CTkButton(scroll, text='Apply Selected Power Plan',
+                                     command=self.request_power_plan)
+        apply_button.pack(pady=4)
+        refresh_button = ctk.CTkButton(scroll, text='Refresh Power Plans',
+                                       command=self.start_power_plan_refresh)
+        refresh_button.pack(pady=4)
+        self.power_plan_buttons = [apply_button, refresh_button]
+        self.power_plan_status_label = ctk.CTkLabel(
+            scroll, text=self.power_plan_status[0], text_color=self.power_plan_status[1])
+        self.power_plan_status_label.pack(pady=(4, 8))
+        self.update_power_plan_buttons()
         ctk.CTkLabel(scroll,
                      text='GPU metrics use NVIDIA nvidia-smi when available. Other vendors may show '
                           'unavailable metrics. TCP latency is not in-game ping.',
@@ -237,7 +248,23 @@ class WinToolKit(ctk.CTk):
         except OSError as exc:
             self.events.put(('latency', f'Unavailable: {exc}'))
 
+    def set_power_plan_status(self, message, color='gray70'):
+        self.power_plan_status = (message, color)
+        if self.current_page == 'Gaming':
+            self.power_plan_status_label.configure(text=message, text_color=color)
+
+    def update_power_plan_buttons(self):
+        if self.current_page == 'Gaming':
+            disabled = bool(self.running_task or self.power_plan_refresh_busy)
+            for button in self.power_plan_buttons:
+                button.configure(state='disabled' if disabled else 'normal')
+
     def start_power_plan_refresh(self):
+        if self.power_plan_refresh_busy or self.running_task:
+            return
+        self.power_plan_refresh_busy = True
+        self.set_power_plan_status('Power plan: Refreshing...', '#e0b45d')
+        self.update_power_plan_buttons()
         threading.Thread(target=self.power_plan_worker, daemon=True).start()
 
     def power_plan_worker(self):
@@ -259,6 +286,8 @@ class WinToolKit(ctk.CTk):
                                    f'Activate {choice}? This changes your Windows power settings.'):
             return
         self.running_task = 'Change power plan'
+        self.set_power_plan_status(f'Power plan: Applying {choice}...', '#e0b45d')
+        self.update_power_plan_buttons()
         self.append_log(f'--- Activating power plan: {choice} ---')
         threading.Thread(target=self.power_plan_worker_apply, args=(guid,), daemon=True).start()
 
@@ -332,6 +361,9 @@ class WinToolKit(ctk.CTk):
         tabs.pack(padx=15, pady=(0, 10))
         self.tab_content = ctk.CTkFrame(self.content, fg_color='transparent')
         self.tab_content.pack(fill='x', padx=15, pady=5)
+        self.maintenance_status = ctk.CTkLabel(self.content, text=self.maintenance_state[0],
+                                               text_color=self.maintenance_state[1])
+        self.maintenance_status.pack(pady=(4, 0))
         self.maintenance_output = ctk.CTkTextbox(self.content, height=220)
         self.maintenance_output.pack(fill='both', expand=True, padx=20, pady=(8, 20))
         self.maintenance_output.insert('end', self.display_text('\n'.join(self.maintenance_log)) + '\n')
@@ -380,6 +412,12 @@ class WinToolKit(ctk.CTk):
     def update_task_buttons(self):
         for button in self.task_buttons:
             button.configure(state='disabled' if self.running_task else 'normal')
+
+    def set_maintenance_status(self, message, color='gray70'):
+        """Remember status even when the Maintenance page is not visible."""
+        self.maintenance_state = (message, color)
+        if self.current_page == 'Maintenance':
+            self.maintenance_status.configure(text=message, text_color=color)
 
     def append_log(self, line):
         self.maintenance_log.append(line)
@@ -446,6 +484,7 @@ class WinToolKit(ctk.CTk):
         if not messagebox.askyesno('Confirm maintenance', description):
             return
         self.running_task = task
+        self.set_maintenance_status(f'Running: {task}...', '#e0b66a')
         self.update_task_buttons()
         self.append_log(f'\n--- Starting: {task} ---')
         threading.Thread(target=self.task_worker, args=(task,), daemon=True).start()
@@ -482,6 +521,7 @@ class WinToolKit(ctk.CTk):
                     'Delete eligible temporary files older than 24 hours? This cannot be undone.'):
                 return
         self.running_task = f'Cleanup: {mode}'
+        self.set_maintenance_status(f'Running cleanup: {mode}...', '#e0b66a')
         self.update_task_buttons()
         self.append_log(f'\n--- Cleanup {mode}: {", ".join(sorted(selected))} ---')
         threading.Thread(target=self.cleanup_worker, args=(mode, selected), daemon=True).start()
@@ -502,6 +542,9 @@ class WinToolKit(ctk.CTk):
                 elif event[0] == 'done':
                     _, task, code = event
                     self.append_log(f'--- {task}: {"completed" if code == 0 else "failed"} (exit code {code}) ---')
+                    self.set_maintenance_status(
+                        f'{task}: completed successfully.' if code == 0 else f'{task}: failed (exit code {code}).',
+                        '#70c080' if code == 0 else '#f08080')
                     self.running_task = None
                     self.update_task_buttons()
                 elif event[0] == 'cleanup_done':
@@ -513,6 +556,10 @@ class WinToolKit(ctk.CTk):
                         self.append_log(f'{name}: {count} files, {size / 1048576:.2f} MiB{skipped}')
                     self.append_log('Dry run only; no files deleted.' if mode == 'dry' else
                                     'Scan finished.' if mode == 'scan' else 'Cleanup finished.')
+                    self.set_maintenance_status(
+                        'Cleanup scan completed.' if mode == 'scan' else
+                        'Dry run completed; no files deleted.' if mode == 'dry' else
+                        'Cleanup completed.', '#70c080')
                     self.running_task = None
                     self.update_task_buttons()
                 elif event[0] == 'gaming_data':
@@ -524,13 +571,19 @@ class WinToolKit(ctk.CTk):
                         text = '; '.join(f'{name} (PID {pid}, {mib} MiB RAM)' for name, pid, mib in games)
                         self.games_label.configure(text=self.display_text('Known running games: ' + (text or 'None detected')))
                 elif event[0] == 'gaming_error':
-                    self.gaming_busy = False
+                    if event[1].startswith('Power plans:'):
+                        self.power_plan_refresh_busy = False
+                        self.set_power_plan_status(f'{event[1]}', '#f08080')
+                        self.update_power_plan_buttons()
+                    else:
+                        self.gaming_busy = False
                     if self.current_page == 'Gaming':
                         self.gaming_status.configure(text=self.display_text(f'Diagnostics: {event[1]}'))
                 elif event[0] == 'latency':
                     if self.current_page == 'Gaming':
                         self.latency_label.configure(text=self.display_text(f'TCP latency: {event[1]}'))
                 elif event[0] == 'power_plans':
+                    self.power_plan_refresh_busy = False
                     plans = event[1]
                     self.gaming_plans = {f'{name} [{guid[:8]}]': guid for guid, name, active in plans}
                     if self.current_page == 'Gaming':
@@ -538,16 +591,25 @@ class WinToolKit(ctk.CTk):
                         self.power_plan_menu.configure(values=labels)
                         active = next((f'{name} [{guid[:8]}]' for guid, name, is_active in plans if is_active), labels[0])
                         self.power_plan_menu.set(active)
+                    self.set_power_plan_status(
+                        'Power plans refreshed.' if plans else 'No power plans found.',
+                        '#70c080' if plans else '#f08080')
+                    self.update_power_plan_buttons()
                 elif event[0] == 'power_applied':
                     self.append_log('--- Power plan activated successfully ---')
+                    self.set_power_plan_status('Power plan activated successfully.', '#70c080')
                     self.running_task = None
                     self.update_task_buttons()
                     self.start_power_plan_refresh()
                 elif event[0] == 'error':
                     _, task, error = event
                     self.append_log(f'ERROR ({task}): {error}')
+                    self.set_maintenance_status(f'{task}: failed. Check the log for details.', '#f08080')
+                    if task == 'Change power plan':
+                        self.set_power_plan_status(f'Power plan change failed: {error}', '#f08080')
                     self.running_task = None
                     self.update_task_buttons()
+                    self.update_power_plan_buttons()
         except queue.Empty:
             pass
         self.after(100, self.process_events)
