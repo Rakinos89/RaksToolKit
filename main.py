@@ -56,6 +56,9 @@ class WinToolKit(ctk.CTk):
         self.task_buttons = []
         self.gaming_busy = False
         self.gaming_plans = {}
+        self.power_plan_status = ('Power plan: Ready.', 'gray70')
+        self.power_plan_refresh_busy = False
+        self.power_plan_buttons = []
         self.last_gaming_refresh = 0
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -180,10 +183,17 @@ class WinToolKit(ctk.CTk):
                      font=('Segoe UI', 16, 'bold')).pack(pady=(14, 6))
         self.power_plan_menu = ctk.CTkOptionMenu(scroll, values=['Loading...'], width=300)
         self.power_plan_menu.pack(pady=4)
-        ctk.CTkButton(scroll, text='Apply Selected Power Plan',
-                      command=self.request_power_plan).pack(pady=4)
-        ctk.CTkButton(scroll, text='Refresh Power Plans',
-                      command=self.start_power_plan_refresh).pack(pady=4)
+        apply_button = ctk.CTkButton(scroll, text='Apply Selected Power Plan',
+                                     command=self.request_power_plan)
+        apply_button.pack(pady=4)
+        refresh_button = ctk.CTkButton(scroll, text='Refresh Power Plans',
+                                       command=self.start_power_plan_refresh)
+        refresh_button.pack(pady=4)
+        self.power_plan_buttons = [apply_button, refresh_button]
+        self.power_plan_status_label = ctk.CTkLabel(
+            scroll, text=self.power_plan_status[0], text_color=self.power_plan_status[1])
+        self.power_plan_status_label.pack(pady=(4, 8))
+        self.update_power_plan_buttons()
         ctk.CTkLabel(scroll,
                      text='GPU metrics use NVIDIA nvidia-smi when available. Other vendors may show '
                           'unavailable metrics. TCP latency is not in-game ping.',
@@ -238,7 +248,23 @@ class WinToolKit(ctk.CTk):
         except OSError as exc:
             self.events.put(('latency', f'Unavailable: {exc}'))
 
+    def set_power_plan_status(self, message, color='gray70'):
+        self.power_plan_status = (message, color)
+        if self.current_page == 'Gaming':
+            self.power_plan_status_label.configure(text=message, text_color=color)
+
+    def update_power_plan_buttons(self):
+        if self.current_page == 'Gaming':
+            disabled = bool(self.running_task or self.power_plan_refresh_busy)
+            for button in self.power_plan_buttons:
+                button.configure(state='disabled' if disabled else 'normal')
+
     def start_power_plan_refresh(self):
+        if self.power_plan_refresh_busy or self.running_task:
+            return
+        self.power_plan_refresh_busy = True
+        self.set_power_plan_status('Power plan: Refreshing...', '#e0b45d')
+        self.update_power_plan_buttons()
         threading.Thread(target=self.power_plan_worker, daemon=True).start()
 
     def power_plan_worker(self):
@@ -260,6 +286,8 @@ class WinToolKit(ctk.CTk):
                                    f'Activate {choice}? This changes your Windows power settings.'):
             return
         self.running_task = 'Change power plan'
+        self.set_power_plan_status(f'Power plan: Applying {choice}...', '#e0b45d')
+        self.update_power_plan_buttons()
         self.append_log(f'--- Activating power plan: {choice} ---')
         threading.Thread(target=self.power_plan_worker_apply, args=(guid,), daemon=True).start()
 
@@ -543,13 +571,19 @@ class WinToolKit(ctk.CTk):
                         text = '; '.join(f'{name} (PID {pid}, {mib} MiB RAM)' for name, pid, mib in games)
                         self.games_label.configure(text=self.display_text('Known running games: ' + (text or 'None detected')))
                 elif event[0] == 'gaming_error':
-                    self.gaming_busy = False
+                    if event[1].startswith('Power plans:'):
+                        self.power_plan_refresh_busy = False
+                        self.set_power_plan_status(f'{event[1]}', '#f08080')
+                        self.update_power_plan_buttons()
+                    else:
+                        self.gaming_busy = False
                     if self.current_page == 'Gaming':
                         self.gaming_status.configure(text=self.display_text(f'Diagnostics: {event[1]}'))
                 elif event[0] == 'latency':
                     if self.current_page == 'Gaming':
                         self.latency_label.configure(text=self.display_text(f'TCP latency: {event[1]}'))
                 elif event[0] == 'power_plans':
+                    self.power_plan_refresh_busy = False
                     plans = event[1]
                     self.gaming_plans = {f'{name} [{guid[:8]}]': guid for guid, name, active in plans}
                     if self.current_page == 'Gaming':
@@ -557,8 +591,13 @@ class WinToolKit(ctk.CTk):
                         self.power_plan_menu.configure(values=labels)
                         active = next((f'{name} [{guid[:8]}]' for guid, name, is_active in plans if is_active), labels[0])
                         self.power_plan_menu.set(active)
+                    self.set_power_plan_status(
+                        'Power plans refreshed.' if plans else 'No power plans found.',
+                        '#70c080' if plans else '#f08080')
+                    self.update_power_plan_buttons()
                 elif event[0] == 'power_applied':
                     self.append_log('--- Power plan activated successfully ---')
+                    self.set_power_plan_status('Power plan activated successfully.', '#70c080')
                     self.running_task = None
                     self.update_task_buttons()
                     self.start_power_plan_refresh()
@@ -566,8 +605,11 @@ class WinToolKit(ctk.CTk):
                     _, task, error = event
                     self.append_log(f'ERROR ({task}): {error}')
                     self.set_maintenance_status(f'{task}: failed. Check the log for details.', '#f08080')
+                    if task == 'Change power plan':
+                        self.set_power_plan_status(f'Power plan change failed: {error}', '#f08080')
                     self.running_task = None
                     self.update_task_buttons()
+                    self.update_power_plan_buttons()
         except queue.Empty:
             pass
         self.after(100, self.process_events)
