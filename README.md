@@ -6,7 +6,7 @@ RaksToolKit is an open-source desktop application that brings practical Windows 
 
 ## Download for Windows
 
-**Development status:** RaksToolKit v1.0.0-dev is being prepared. The link below points to the previous WinToolKit v0.9.0 release, not the upcoming RaksToolKit build.
+**Development status:** RaksToolKit v1.0.0 is being prepared. The link below points to the previous WinToolKit v0.9.0 release, not the upcoming RaksToolKit build.
 
 
 **[Download WinToolKit v0.9.0 for Windows x64](https://github.com/Rakinos89/WinToolKit/releases/tag/v0.9.0)**
