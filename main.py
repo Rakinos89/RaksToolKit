@@ -52,6 +52,7 @@ class WinToolKit(ctk.CTk):
         self.cleanup_selection = {}
         self.cleanup_scan = None
         self.maintenance_log = ['Ready to run maintenance tasks.']
+        self.maintenance_state = ('Ready for maintenance tasks.', 'gray70')
         self.task_buttons = []
         self.gaming_busy = False
         self.gaming_plans = {}
@@ -332,6 +333,9 @@ class WinToolKit(ctk.CTk):
         tabs.pack(padx=15, pady=(0, 10))
         self.tab_content = ctk.CTkFrame(self.content, fg_color='transparent')
         self.tab_content.pack(fill='x', padx=15, pady=5)
+        self.maintenance_status = ctk.CTkLabel(self.content, text=self.maintenance_state[0],
+                                               text_color=self.maintenance_state[1])
+        self.maintenance_status.pack(pady=(4, 0))
         self.maintenance_output = ctk.CTkTextbox(self.content, height=220)
         self.maintenance_output.pack(fill='both', expand=True, padx=20, pady=(8, 20))
         self.maintenance_output.insert('end', self.display_text('\n'.join(self.maintenance_log)) + '\n')
@@ -380,6 +384,12 @@ class WinToolKit(ctk.CTk):
     def update_task_buttons(self):
         for button in self.task_buttons:
             button.configure(state='disabled' if self.running_task else 'normal')
+
+    def set_maintenance_status(self, message, color='gray70'):
+        """Remember status even when the Maintenance page is not visible."""
+        self.maintenance_state = (message, color)
+        if self.current_page == 'Maintenance':
+            self.maintenance_status.configure(text=message, text_color=color)
 
     def append_log(self, line):
         self.maintenance_log.append(line)
@@ -446,6 +456,7 @@ class WinToolKit(ctk.CTk):
         if not messagebox.askyesno('Confirm maintenance', description):
             return
         self.running_task = task
+        self.set_maintenance_status(f'Running: {task}...', '#e0b66a')
         self.update_task_buttons()
         self.append_log(f'\n--- Starting: {task} ---')
         threading.Thread(target=self.task_worker, args=(task,), daemon=True).start()
@@ -482,6 +493,7 @@ class WinToolKit(ctk.CTk):
                     'Delete eligible temporary files older than 24 hours? This cannot be undone.'):
                 return
         self.running_task = f'Cleanup: {mode}'
+        self.set_maintenance_status(f'Running cleanup: {mode}...', '#e0b66a')
         self.update_task_buttons()
         self.append_log(f'\n--- Cleanup {mode}: {", ".join(sorted(selected))} ---')
         threading.Thread(target=self.cleanup_worker, args=(mode, selected), daemon=True).start()
@@ -502,6 +514,9 @@ class WinToolKit(ctk.CTk):
                 elif event[0] == 'done':
                     _, task, code = event
                     self.append_log(f'--- {task}: {"completed" if code == 0 else "failed"} (exit code {code}) ---')
+                    self.set_maintenance_status(
+                        f'{task}: completed successfully.' if code == 0 else f'{task}: failed (exit code {code}).',
+                        '#70c080' if code == 0 else '#f08080')
                     self.running_task = None
                     self.update_task_buttons()
                 elif event[0] == 'cleanup_done':
@@ -513,6 +528,10 @@ class WinToolKit(ctk.CTk):
                         self.append_log(f'{name}: {count} files, {size / 1048576:.2f} MiB{skipped}')
                     self.append_log('Dry run only; no files deleted.' if mode == 'dry' else
                                     'Scan finished.' if mode == 'scan' else 'Cleanup finished.')
+                    self.set_maintenance_status(
+                        'Cleanup scan completed.' if mode == 'scan' else
+                        'Dry run completed; no files deleted.' if mode == 'dry' else
+                        'Cleanup completed.', '#70c080')
                     self.running_task = None
                     self.update_task_buttons()
                 elif event[0] == 'gaming_data':
@@ -546,6 +565,7 @@ class WinToolKit(ctk.CTk):
                 elif event[0] == 'error':
                     _, task, error = event
                     self.append_log(f'ERROR ({task}): {error}')
+                    self.set_maintenance_status(f'{task}: failed. Check the log for details.', '#f08080')
                     self.running_task = None
                     self.update_task_buttons()
         except queue.Empty:
