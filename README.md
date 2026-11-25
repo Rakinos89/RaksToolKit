@@ -4,6 +4,14 @@
 
 WinToolKit is an open-source desktop application that brings practical Windows tools into one graphical interface. Development is incremental, with features tested before each release. Windows users can download a portable build without installing Python.
 
+## Download for Windows
+
+**[Download WinToolKit v0.9.0 for Windows x64](https://github.com/Rakinos89/WinToolKit/releases/tag/v0.9.0)**
+
+Download `WinToolKit-v0.9.0-Windows-x64.zip` under **Assets**. Extract the full archive and run `WinToolKit.exe` from the extracted `WinToolKit` folder. Keep the `_internal` folder alongside the executable. **No Python installation or IDE required.**
+
+See [Download and Run](#download-and-run-windows) for details and security notes.
+
 ## Features
 
 ### System Dashboard
@@ -48,8 +56,6 @@ Some maintenance operations require administrator privileges.
 
 ## Screenshots
 
-*Screenshots below were captured during earlier development and may not reflect the latest v0.8 interface.*
-
 ### Dashboard
 ![WinToolKit Dashboard](assets/screenshots/wintoolkit_dashboard.png)
 
@@ -58,6 +64,9 @@ Some maintenance operations require administrator privileges.
 
 ### Gaming
 ![WinToolKit Gaming](assets/screenshots/wintoolkit_gaming.png)
+
+### Activity History
+![WinToolKit Activity History](assets/screenshots/wintoolkit_activity.png)
 
 ## Download and Run (Windows)
 
@@ -106,6 +115,8 @@ Launch:
 | v0.7 | Gaming and performance tools | Complete |
 | v0.8 | Extended NVIDIA monitoring, live Gaming dashboard, Privacy Mode, CPU identification | Complete |
 | v0.9 | Portable Windows executable, application icon, distribution ZIP, refresh feedback | Complete |
+| Pre-v1.0 | Documentation, license, automated testing, reliability and UI improvements | In progress |
+| v1.0.0 | Stable release after final verification and packaging | Planned |
 | Future | AMD GPU monitoring and additional hardware support | Planned |
 
 ## Building a Windows Release
@@ -137,4 +148,4 @@ WinToolKit is an independent development project. System maintenance and cleanup
 
 ## License
 
-No license has been selected yet. The repository is publicly viewable, but reuse and redistribution permissions have not been granted through an open-source license.
+Licensed under the **MIT License**. See [LICENSE](LICENSE) for the full terms and copyright notice.
