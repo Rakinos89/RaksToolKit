@@ -43,7 +43,9 @@ class GpuTests(unittest.TestCase):
 
 class PrivacyTests(unittest.TestCase):
     def test_persistence(self):
-        with tempfile.TemporaryDirectory() as temp, patch.object(privacy, 'SETTINGS', Path(temp) / 'WinToolKit' / 'settings.json'):
+        with tempfile.TemporaryDirectory() as temp, \
+                patch.object(privacy, 'SETTINGS', Path(temp) / 'RaksToolKit' / 'settings.json'), \
+                patch.object(privacy, 'LEGACY_SETTINGS', Path(temp) / 'WinToolKit' / 'settings.json'):
             self.assertFalse(privacy.load_privacy())
             privacy.save_privacy(True)
             self.assertTrue(privacy.load_privacy())
@@ -112,7 +114,9 @@ class GamingTests(unittest.TestCase):
 
 class ActivityTests(unittest.TestCase):
     def test_record_and_read(self):
-        with tempfile.TemporaryDirectory() as temp, patch.object(activity, 'LOG_PATH', Path(temp) / 'activity.log'):
+        with tempfile.TemporaryDirectory() as temp, \
+                patch.object(activity, 'LOG_PATH', Path(temp) / 'RaksToolKit' / 'activity.log'), \
+                patch.object(activity, 'LEGACY_LOG_PATH', Path(temp) / 'WinToolKit' / 'activity.log'):
             self.assertEqual(activity.read_recent(), 'No activity recorded yet.')
             activity.record('Automated test entry')
             self.assertIn('Automated test entry', activity.read_recent())
