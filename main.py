@@ -20,7 +20,7 @@ from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '1.0.0-dev'
+VERSION = '1.0.0'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('green')
 
