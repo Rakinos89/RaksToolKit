@@ -2,9 +2,12 @@
 
 **A Windows maintenance, system monitoring, and gaming utility built with Python.**
 
-WinToolKit is an open-source desktop application that brings practical Windows tools into one graphical interface. Development is incremental, with features tested before each release. Windows users can download a portable build without installing Python.
+RaksToolKit is an open-source desktop application that brings practical Windows tools into one graphical interface. Development is incremental, with features tested before each release. Windows users can download a portable build without installing Python.
 
 ## Download for Windows
+
+**Development status:** RaksToolKit v1.0.0-dev is being prepared. The link below points to the previous WinToolKit v0.9.0 release, not the upcoming RaksToolKit build.
+
 
 **[Download WinToolKit v0.9.0 for Windows x64](https://github.com/Rakinos89/WinToolKit/releases/tag/v0.9.0)**
 
@@ -57,16 +60,16 @@ Some maintenance operations require administrator privileges.
 ## Screenshots
 
 ### Dashboard
-![WinToolKit Dashboard](assets/screenshots/wintoolkit_dashboard.png)
+![RaksToolKit Dashboard](assets/screenshots/wintoolkit_dashboard.png)
 
 ### Maintenance
-![WinToolKit Maintenance](assets/screenshots/wintoolkit_maintenance.png)
+![RaksToolKit Maintenance](assets/screenshots/wintoolkit_maintenance.png)
 
 ### Gaming
-![WinToolKit Gaming](assets/screenshots/wintoolkit_gaming.png)
+![RaksToolKit Gaming](assets/screenshots/wintoolkit_gaming.png)
 
 ### Activity History
-![WinToolKit Activity History](assets/screenshots/wintoolkit_activity.png)
+![RaksToolKit Activity History](assets/screenshots/wintoolkit_activity.png)
 
 ## Download and Run (Windows)
 

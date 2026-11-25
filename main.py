@@ -1,4 +1,4 @@
-"""WinToolKit v0.9: Windows dashboard, maintenance and gaming tools."""
+"""RaksToolKit: Windows dashboard, maintenance and gaming tools."""
 import os
 import platform
 import queue
@@ -20,9 +20,9 @@ from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '0.9.0'
+VERSION = '1.0.0-dev'
 ctk.set_appearance_mode('dark')
-ctk.set_default_color_theme('blue')
+ctk.set_default_color_theme('green')
 
 
 def resource_path(relative_path):
@@ -31,11 +31,11 @@ def resource_path(relative_path):
     return base_path / relative_path
 
 
-class WinToolKit(ctk.CTk):
+class RaksToolKit(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title(f'WinToolKit v{VERSION}')
-        icon_path = resource_path(Path('assets') / 'icons' / 'wintoolkit.ico')
+        self.title(f'RaksToolKit v{VERSION}')
+        icon_path = resource_path(Path('assets') / 'icons' / 'rakstoolkit.ico')
         if icon_path.is_file():
             try:
                 self.iconbitmap(str(icon_path))
@@ -66,7 +66,7 @@ class WinToolKit(ctk.CTk):
         self.sidebar = ctk.CTkFrame(self, width=205, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky='nsew')
         self.sidebar.grid_propagate(False)
-        ctk.CTkLabel(self.sidebar, text='WinToolKit', font=('Segoe UI', 25, 'bold')).pack(pady=(28, 4))
+        ctk.CTkLabel(self.sidebar, text='RaksToolKit', font=('Segoe UI', 25, 'bold')).pack(pady=(28, 4))
         ctk.CTkLabel(self.sidebar, text=f'v{VERSION}  •  ' + ('Administrator' if self.admin else 'Standard user'),
                      text_color='#70c080' if self.admin else '#e0b66a').pack(pady=(0, 28))
         for name in ('Dashboard', 'Maintenance', 'Gaming', 'Network', 'Settings', 'Activity'):
@@ -111,7 +111,7 @@ class WinToolKit(ctk.CTk):
         if self.privacy_mode: switch.select()
         ctk.CTkLabel(self.content,text='Hide the computer name, Windows username, and IPv4 addresses in displayed information.',wraplength=600).pack(pady=8)
         ctk.CTkLabel(self.content,text='This does not erase existing logs, hide other applications, or guarantee that every identifier is masked.',wraplength=600,text_color='gray70').pack(pady=8)
-        ctk.CTkLabel(self.content,text=f'WinToolKit version {VERSION}').pack(pady=12)
+        ctk.CTkLabel(self.content,text=f'RaksToolKit version {VERSION}').pack(pady=12)
         ctk.CTkLabel(self.content,text=self.display_text(f'Activity log: {LOG_PATH}'),wraplength=650).pack(pady=12)
 
     def change_privacy_mode(self):
@@ -461,7 +461,7 @@ class WinToolKit(ctk.CTk):
         if self.running_task:
             messagebox.showwarning('Task running', 'Wait for the current task to finish.')
             return
-        if not messagebox.askyesno('Administrator permissions', 'Restart WinToolKit as administrator?'):
+        if not messagebox.askyesno('Administrator permissions', 'Restart RaksToolKit as administrator?'):
             return
         try:
             relaunch_as_admin()
@@ -616,4 +616,7 @@ class WinToolKit(ctk.CTk):
 
 
 if __name__ == '__main__':
-    WinToolKit().mainloop()
+    RaksToolKit().mainloop()
+
+# Backward-compatible alias for existing tests and integrations.
+WinToolKit = RaksToolKit
