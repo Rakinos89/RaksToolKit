@@ -22,7 +22,7 @@ from modules.network_overview import get_network_overview
 from modules.software_updates import check_updates, upgrade_all, upgrade_package, parse_upgrade_table
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '1.1.0-dev'
+VERSION = '1.1.0'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('green')
 
