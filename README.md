@@ -2,15 +2,17 @@
 
 **A Windows maintenance, system monitoring, and gaming utility built with Python.**
 
-RaksToolKit is an open-source Windows desktop application that brings practical system tools into one graphical interface. It provides monitoring, maintenance, gaming utilities, and privacy-conscious display options. Download the portable Windows build to use it without installing Python.
+RaksToolKit is an open-source Windows desktop application that brings practical system tools into one graphical interface. It provides monitoring, maintenance, gaming utilities, software update checks, and privacy-conscious display options. Download the portable Windows build to use it without installing Python.
 
 ## Download for Windows
 
-**Latest stable release: v1.0.0**
+**Latest published stable release: v1.0.0**
 
-**[Download RaksToolKit v1.0.0 for Windows x64](https://github.com/Rakinos89/RaksToolKit/releases/tag/v1.0.0)**
+**[Download the latest published RaksToolKit release](https://github.com/Rakinos89/RaksToolKit/releases/latest)**
 
-Under **Assets**, download `RaksToolKit-v1.0.0-Windows-x64.zip`, extract the entire archive, and run `RaksToolKit.exe` from the extracted `RaksToolKit` folder. Keep the `_internal` folder beside the executable. **No separate Python installation or IDE required.**
+Under **Assets**, download the `RaksToolKit-<version>-Windows-x64.zip` file, extract the entire archive, and run `RaksToolKit.exe` from the extracted `RaksToolKit` folder. Keep the `_internal` folder beside the executable. **No separate Python installation or IDE required.**
+
+> **Release preparation:** v1.1.0 features are merged into `main`, but the v1.1.0 release has not yet been published. The download above continues to point to the latest published release until then.
 
 See [Download and Run](#download-and-run-windows) for installation and security notes.
 
@@ -32,13 +34,28 @@ See [Download and Run](#download-and-run-windows) for installation and security 
 - Preview eligible files and estimated space using Scan or Dry Run
 - Confirm before deletion; skip inaccessible files and symbolic links
 
+### Software Updates
+- Check for available application upgrades using Windows Package Manager (`winget`)
+- Review detected applications and their installed and available versions
+- Update all detected packages or select individual packages to update
+- Review command output and completion status
+- Some packages may require administrator privileges or user interaction
+
 ### Gaming & Performance
 - NVIDIA GPU monitoring via `nvidia-smi`, including utilization, temperature, VRAM, clocks, and power where available
-- Automatic GPU updates every two seconds on the Gaming page
+- AMD GPU monitoring through optional ADLX bindings, with available metrics depending on GPU and driver
+- Automatic GPU metric refresh on the Gaming page
 - Scrollable dashboard with GPU metric cards and usage bars
 - Detection of selected running game processes
 - Windows power plan management and TCP connection latency testing
-- Modular monitoring code for future GPU vendor support; AMD monitoring is not yet verified
+- Normalized GPU metric display with graceful fallback for unsupported values
+
+**GPU testing status:** NVIDIA monitoring has been verified on NVIDIA hardware. AMD monitoring passes mocked automated tests but has **not yet been verified on an actual AMD GPU**. AMD metric availability and packaging behavior may vary by driver and hardware.
+
+### Network Overview
+- Display network adapter information and connection details
+- Handle disconnected adapters and missing information gracefully
+- Respect supported Privacy Mode masking for displayed network information
 
 ### Privacy Mode
 - Settings toggle to mask supported computer name, username, and IPv4 text displayed in the app
@@ -50,12 +67,18 @@ See [Download and Run](#download-and-run-windows) for installation and security 
 - Task results and error reporting
 - AppData storage under the RaksToolKit application name, with migration of supported older WinToolKit data
 
+### Interface Improvements
+- More consistent button appearance when navigating between pages and maintenance tabs
+- Clearer software update selection and completion feedback
+
 ## Requirements
 - Windows 10 or Windows 11 (64-bit)
 - For source-code use only: Python 3.10 or newer and dependencies in `requirements.txt`
-- NVIDIA GPU metrics require a compatible NVIDIA driver and `nvidia-smi`; other adapters may show unavailable metrics
+- NVIDIA GPU metrics require a compatible NVIDIA driver and `nvidia-smi`
+- AMD GPU metrics require compatible AMD hardware, drivers, and ADLX support; unsupported metrics may show as unavailable
+- Software Updates requires Windows Package Manager (`winget`) for update checks and installations
 
-Some maintenance operations require administrator privileges.
+Some maintenance and update operations require administrator privileges.
 
 ## Screenshots
 
@@ -75,8 +98,8 @@ These screenshots may show an earlier interface version; updated RaksToolKit scr
 
 ## Download and Run (Windows)
 
-1. Open the [v1.0.0 GitHub release](https://github.com/Rakinos89/RaksToolKit/releases/tag/v1.0.0).
-2. Download `RaksToolKit-v1.0.0-Windows-x64.zip` from **Assets**, not the automatically generated source-code archive.
+1. Open the [latest published GitHub release](https://github.com/Rakinos89/RaksToolKit/releases/latest).
+2. Download the `RaksToolKit-<version>-Windows-x64.zip` file from **Assets**, not the automatically generated source-code archive.
 3. Extract the entire ZIP to a folder of your choice.
 4. Open the extracted `RaksToolKit` folder and double-click `RaksToolKit.exe`. Keep the `_internal` folder alongside the executable.
 
@@ -109,6 +132,14 @@ Launch:
 .\.venv\Scripts\python.exe main.py
 ```
 
+Run automated tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Some tests involving Windows symbolic links may be skipped when the required permissions are unavailable.
+
 ## Development Roadmap
 
 | Version | Milestone | Status |
@@ -122,7 +153,8 @@ Launch:
 | v0.9 | Portable Windows executable, application icon, distribution ZIP, refresh feedback | Complete |
 | Pre-v1.0 | Documentation, license, automated testing, reliability and UI improvements | Complete |
 | v1.0.0 | Stable release, RaksToolKit branding, and final packaging | Released |
-| Future | AMD GPU monitoring and additional hardware support | Planned |
+| v1.1.0 | AMD GPU monitoring, Network Overview, Software Updates, and UI improvements | Release preparation |
+| Future | Further hardware compatibility testing and feature improvements | Planned |
 
 ## Building a Windows Release
 
@@ -134,23 +166,27 @@ From the repository root, on Windows with a configured `.venv` and PyInstaller i
 
 The script uses PyInstaller from the virtual environment, bundles the application icon, builds the executable, and writes the portable ZIP and a SHA-256 checksum into `dist`. It does not upload or publish a GitHub release. The icon must exist at `assets/icons/rakstoolkit.ico`.
 
+**Before publishing a new version**, update the application version and the version variable in `build.ps1`, build the ZIP, and test the extracted portable application on Windows.
+
 ## Technology Stack
 - **Python:** Application logic
 - **CustomTkinter:** Desktop interface
 - **psutil:** System and process monitoring
-- **Windows utilities:** Diagnostics and maintenance
+- **AMD ADLX bindings:** Optional AMD GPU monitoring
+- **Windows utilities and winget:** Diagnostics, maintenance, and software updates
 - **PyInstaller:** Windows portable build
 - **Git & GitHub:** Version control and releases
 
 ## Project Status
 
-**Current stable version: v1.0.0**
+**Latest published stable version: v1.0.0**  
+**Next release: v1.1.0 (in preparation)**
 
-RaksToolKit is under active development. GPU monitoring availability varies by hardware and driver. Future releases will expand hardware support and functionality.
+RaksToolKit is under active development. GPU monitoring availability varies by hardware and driver. AMD monitoring still requires validation on real AMD graphics hardware.
 
 ## Disclaimer
 
-RaksToolKit is an independent development project. System maintenance and cleanup operations can modify or delete files. Review actions carefully and use the application at your own risk.
+RaksToolKit is an independent development project. System maintenance, cleanup, and software update operations can modify or delete files and change installed software. Review actions carefully and use the application at your own risk.
 
 ## License
 
