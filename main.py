@@ -18,6 +18,7 @@ from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
+from modules.network_overview import get_network_overview
 from modules.software_updates import check_updates, upgrade_all, upgrade_package, parse_upgrade_table
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
@@ -66,6 +67,8 @@ class RaksToolKit(ctk.CTk):
         self.power_plan_refresh_busy = False
         self.power_plan_buttons = []
         self.last_gaming_refresh = 0
+        self.network_refreshing = False
+        self.network_snapshot = None
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -105,6 +108,8 @@ class RaksToolKit(ctk.CTk):
             self.build_activity()
         elif page == 'Settings':
             self.build_settings()
+        elif page == 'Network':
+            self.build_network_overview()
         else:
             ctk.CTkLabel(self.content, text=f'{page} tools coming in a future release.').pack(pady=25)
         self.apply_accent()
@@ -161,6 +166,67 @@ class RaksToolKit(ctk.CTk):
 
     def display_text(self, value):
         return redact(value, self.privacy_mode)
+
+    def build_network_overview(self):
+        """Read-only adapter overview, refreshed off the UI thread."""
+        ctk.CTkLabel(self.content, text='Network Overview',
+                     font=('Segoe UI', 19, 'bold')).pack(pady=(8, 8))
+        ctk.CTkLabel(self.content,
+                     text='Active network adapter and connection details (read-only)',
+                     text_color='gray70').pack(pady=(0, 12))
+        self.network_refresh_button = ctk.CTkButton(
+            self.content, text='Refresh Network Info', width=210,
+            command=self.refresh_network_overview)
+        self.network_refresh_button.pack(pady=(0, 12))
+        self.network_status_label = ctk.CTkLabel(
+            self.content, text='Ready to check network information.', text_color='gray70')
+        self.network_status_label.pack(pady=(0, 12))
+        panel = ctk.CTkFrame(self.content)
+        panel.pack(fill='x', padx=28, pady=8)
+        self.network_value_labels = {}
+        for row, (key, label) in enumerate((
+            ('status', 'Connection status'), ('adapter', 'Active adapter'),
+            ('ipv4', 'IPv4 address'), ('gateway', 'Default gateway'),
+            ('dns', 'DNS servers'), ('mac', 'MAC address'),
+            ('speed', 'Adapter speed'))):
+            ctk.CTkLabel(panel, text=label + ':', anchor='w',
+                         font=('Segoe UI', 13, 'bold')).grid(
+                             row=row, column=0, sticky='w', padx=(18, 14), pady=9)
+            value = ctk.CTkLabel(panel, text='Not available', anchor='w',
+                                 wraplength=480, justify='left')
+            value.grid(row=row, column=1, sticky='w', padx=(0, 18), pady=9)
+            self.network_value_labels[key] = value
+        panel.grid_columnconfigure(1, weight=1)
+        if self.network_snapshot is None:
+            self.refresh_network_overview()
+        else:
+            self.render_network_overview(self.network_snapshot)
+
+    def refresh_network_overview(self):
+        if self.network_refreshing:
+            return
+        self.network_refreshing = True
+        self.network_refresh_button.configure(state='disabled')
+        self.network_status_label.configure(text='Reading network information...')
+        threading.Thread(target=self.network_overview_worker, daemon=True).start()
+
+    def network_overview_worker(self):
+        try:
+            self.events.put(('network_overview_result', get_network_overview(), None))
+        except Exception as exc:
+            self.events.put(('network_overview_result', None, str(exc)))
+
+    def render_network_overview(self, data):
+        if self.current_page != 'Network':
+            return
+        for key, label in self.network_value_labels.items():
+            value = data.get(key, 'Not available')
+            if key in ('ipv4', 'gateway', 'dns', 'mac') and self.privacy_mode:
+                value = '[hidden]'
+            else:
+                value = self.display_text(value)
+            label.configure(text=str(value))
+        self.network_status_label.configure(text='Network information refreshed.')
 
     def build_settings(self):
         ctk.CTkLabel(self.content, text='Privacy & Preferences', font=('Segoe UI',19,'bold')).pack(pady=(8,15))
@@ -776,7 +842,18 @@ class RaksToolKit(ctk.CTk):
         try:
             while True:
                 event = self.events.get_nowait()
-                if event[0] == 'line':
+                if event[0] == 'network_overview_result':
+                    _, data, error = event
+                    self.network_refreshing = False
+                    if data is not None:
+                        self.network_snapshot = data
+                    if self.current_page == 'Network':
+                        self.network_refresh_button.configure(state='normal')
+                        if error:
+                            self.network_status_label.configure(text=f'Unable to read network information: {error}')
+                        else:
+                            self.render_network_overview(data)
+                elif event[0] == 'line':
                     self.append_log(event[1])
                 elif event[0] == 'updates_result':
                     _, code, parsed = event
