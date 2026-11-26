@@ -18,9 +18,10 @@ from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
+from modules.software_updates import check_updates, upgrade_all, upgrade_package, parse_upgrade_table
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '1.0.0'
+VERSION = '1.1.0-dev'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('green')
 
@@ -54,6 +55,9 @@ class RaksToolKit(ctk.CTk):
         self.maintenance_log = ['Ready to run maintenance tasks.']
         self.maintenance_state = ('Ready for maintenance tasks.', 'gray70')
         self.task_buttons = []
+        self.available_updates = None
+        self.selected_update_ids = set()
+        self.refresh_after_selected = False
         self.gaming_busy = False
         self.gaming_plans = {}
         self.power_plan_status = ('Power plan: Ready.', 'gray70')
@@ -356,7 +360,7 @@ class RaksToolKit(ctk.CTk):
             ctk.CTkButton(self.content, text='Restart as Administrator',
                           command=self.request_elevation).pack(pady=(0, 10))
         tabs = ctk.CTkSegmentedButton(self.content,
-                                     values=['System Repair', 'Smart Cleanup', 'Network'],
+                                     values=['System Repair', 'Smart Cleanup', 'Network', 'Software Updates'],
                                      command=self.show_maintenance_tab)
         tabs.pack(padx=15, pady=(0, 10))
         self.tab_content = ctk.CTkFrame(self.content, fg_color='transparent')
@@ -385,6 +389,28 @@ class RaksToolKit(ctk.CTk):
                                        command=lambda t=task: self.start_task(t))
                 button.pack(pady=6)
                 self.task_buttons.append(button)
+        elif tab == 'Software Updates':
+            ctk.CTkLabel(self.tab_content, text='Available Application Updates',
+                         font=('Segoe UI', 17, 'bold')).pack(pady=10)
+            ctk.CTkLabel(self.tab_content, text='Check for available updates or install all available upgrades using winget.').pack(pady=(0, 8))
+            controls = ctk.CTkFrame(self.tab_content, fg_color='transparent')
+            controls.pack(pady=6)
+            check_button = ctk.CTkButton(controls, text='Check for Updates', width=200, height=36,
+                                         command=self.start_update_check)
+            check_button.pack(side='left', padx=6)
+            update_button = ctk.CTkButton(controls, text='Update All', width=200, height=36,
+                                          command=self.start_upgrade_all)
+            update_button.pack(side='left', padx=6)
+            selected_button = ctk.CTkButton(controls, text='Update Selected', width=170, height=36,
+                                            command=self.start_upgrade_selected)
+            selected_button.pack(side='left', padx=6)
+            self.task_buttons.extend((check_button, update_button, selected_button))
+            self.update_selected_button = selected_button
+            self.updates_count_label = ctk.CTkLabel(self.tab_content, text='Run Check for Updates to populate the table.', text_color='gray70')
+            self.updates_count_label.pack(pady=(10, 4))
+            self.updates_table = ctk.CTkScrollableFrame(self.tab_content, height=155)
+            self.updates_table.pack(fill='x', padx=12, pady=(0, 6))
+            self.render_available_updates()
         elif tab == 'Network':
             ctk.CTkLabel(self.tab_content, text='DNS Resolver Maintenance',
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
@@ -409,9 +435,45 @@ class RaksToolKit(ctk.CTk):
                 self.task_buttons.append(button)
         self.update_task_buttons()
 
+    def toggle_update_selection(self, package_id, enabled):
+        if enabled:
+            self.selected_update_ids.add(package_id)
+        else:
+            self.selected_update_ids.discard(package_id)
+        self.update_task_buttons()
+
+    def render_available_updates(self):
+        """Render saved update results; safe to call after tab navigation."""
+        if self.current_page != 'Maintenance' or self.current_tab != 'Software Updates':
+            return
+        for child in self.updates_table.winfo_children():
+            child.destroy()
+        updates = self.available_updates
+        if updates is None:
+            self.updates_count_label.configure(text='Run Check for Updates to populate the table.')
+            self.update_task_buttons()
+            return
+        self.updates_count_label.configure(text=f'{len(updates)} available update(s)' if updates else 'No updates found in the recognized winget table.')
+        for col, label, weight in ((0, 'Select', 0), (1, 'Application', 3), (2, 'Installed', 1), (3, 'Available', 1)):
+            self.updates_table.grid_columnconfigure(col, weight=weight)
+            ctk.CTkLabel(self.updates_table, text=label, font=('Segoe UI', 12, 'bold'), anchor='w').grid(row=0, column=col, sticky='ew', padx=8, pady=3)
+        for index, (name, package_id, installed, available) in enumerate(updates, 1):
+            selected_var = ctk.BooleanVar(value=package_id in self.selected_update_ids)
+            ctk.CTkCheckBox(self.updates_table, text='', width=24, variable=selected_var,
+                            command=lambda pid=package_id, var=selected_var: self.toggle_update_selection(pid, var.get())
+                            ).grid(row=index, column=0, sticky='w', padx=8, pady=3)
+            for col, value in enumerate((f'{name}\n{package_id}', installed, available), 1):
+                ctk.CTkLabel(self.updates_table, text=self.display_text(value), anchor='w', justify='left').grid(row=index, column=col, sticky='ew', padx=8, pady=3)
+        self.update_task_buttons()
+
     def update_task_buttons(self):
         for button in self.task_buttons:
             button.configure(state='disabled' if self.running_task else 'normal')
+        if (self.current_page == 'Maintenance' and self.current_tab == 'Software Updates'
+                and hasattr(self, 'update_selected_button')):
+            enabled = bool(self.selected_update_ids) and not self.running_task and self.available_updates is not None
+            self.update_selected_button.configure(state='normal' if enabled else 'disabled',
+                                                  text=f'Update Selected ({len(self.selected_update_ids)})')
 
     def set_maintenance_status(self, message, color='gray70'):
         """Remember status even when the Maintenance page is not visible."""
@@ -506,6 +568,97 @@ class RaksToolKit(ctk.CTk):
         except Exception as exc:
             self.events.put(('error', task, str(exc)))
 
+    def start_update_check(self):
+        if self.running_task:
+            return
+        task = 'Check for Updates'
+        self.running_task = task
+        self.set_maintenance_status('Checking for application updates...', '#e0b66a')
+        self.update_task_buttons()
+        self.available_updates = None
+        self.selected_update_ids.clear()
+        self.render_available_updates()
+        self.append_log('\n--- Checking available updates (winget upgrade) ---')
+        threading.Thread(target=self.update_check_worker, daemon=True).start()
+
+    def update_check_worker(self):
+        task = 'Check for Updates'
+        try:
+            captured = []
+            def receive(line):
+                captured.append(line)
+                self.events.put(('line', line))
+            code = check_updates(receive)
+            self.events.put(('updates_result', code, parse_upgrade_table(captured)))
+            self.events.put(('done', task, code))
+        except Exception as exc:
+            self.events.put(('error', task, str(exc)))
+
+    def start_upgrade_all(self):
+        if self.running_task:
+            return
+        if not messagebox.askyesno(
+            'Confirm software upgrades',
+            'Run winget upgrade --all?\n\n'
+            'This may download and install updates, close running applications, '
+            'request administrator permission, or require a restart. '
+            'Some installers may ask for input. Save your work first.\n\n'
+            'Continue?'
+        ):
+            return
+        task = 'Update All'
+        self.running_task = task
+        self.set_maintenance_status('Installing available application updates...', '#e0b66a')
+        self.update_task_buttons()
+        self.append_log('\n--- Starting application upgrades (winget upgrade --all) ---')
+        threading.Thread(target=self.upgrade_all_worker, daemon=True).start()
+
+    def upgrade_all_worker(self):
+        task = 'Update All'
+        try:
+            code = upgrade_all(lambda line: self.events.put(('line', line)))
+            self.events.put(('done', task, code))
+        except Exception as exc:
+            self.events.put(('error', task, str(exc)))
+
+    def start_upgrade_selected(self):
+        if self.running_task or not self.available_updates:
+            return
+        selected = [item for item in self.available_updates if item[1] in self.selected_update_ids]
+        if not selected:
+            return
+        names = '\n'.join(f'• {name} ({package_id})' for name, package_id, _, _ in selected)
+        if not messagebox.askyesno(
+            'Confirm selected software upgrades',
+            f'Upgrade these {len(selected)} application(s)?\n\n{names}\n\n'
+            'Installers may request input or administrator permission, close apps, or require a restart. '
+            'Save your work before continuing.'
+        ):
+            return
+        task = 'Update Selected'
+        self.running_task = task
+        self.set_maintenance_status(f'Updating {len(selected)} selected application(s)...', '#e0b66a')
+        self.update_task_buttons()
+        self.append_log(f'\n--- Starting {len(selected)} selected application upgrades ---')
+        threading.Thread(target=self.upgrade_selected_worker, args=(selected,), daemon=True).start()
+
+    def upgrade_selected_worker(self, selected):
+        failures = 0
+        try:
+            for name, package_id, _, _ in selected:
+                self.events.put(('line', f'--- Upgrading {name} ({package_id}) ---'))
+                try:
+                    code = upgrade_package(package_id, lambda line: self.events.put(('line', line)))
+                except Exception as exc:
+                    code = -1
+                    self.events.put(('line', f'{package_id}: {exc}'))
+                self.events.put(('line', f'--- {package_id}: exit code {code} ---'))
+                if code != 0:
+                    failures += 1
+            self.events.put(('selected_upgrades_done', len(selected), failures))
+        except Exception as exc:
+            self.events.put(('error', 'Update Selected', str(exc)))
+
     def start_cleanup(self, mode):
         if self.running_task:
             return
@@ -539,6 +692,17 @@ class RaksToolKit(ctk.CTk):
                 event = self.events.get_nowait()
                 if event[0] == 'line':
                     self.append_log(event[1])
+                elif event[0] == 'updates_result':
+                    _, code, parsed = event
+                    self.available_updates = parsed if code == 0 else None
+                    if self.available_updates is not None:
+                        valid_ids = {item[1] for item in self.available_updates}
+                        self.selected_update_ids.intersection_update(valid_ids)
+                    if code == 0 and parsed is None:
+                        self.append_log('Update table could not be parsed (possibly localized output). See raw winget output above.')
+                    self.render_available_updates()
+                    if self.current_page == 'Maintenance' and self.current_tab == 'Software Updates' and parsed is None:
+                        self.updates_count_label.configure(text='Table unavailable. See command output below.')
                 elif event[0] == 'done':
                     _, task, code = event
                     self.append_log(f'--- {task}: {"completed" if code == 0 else "failed"} (exit code {code}) ---')
@@ -546,6 +710,17 @@ class RaksToolKit(ctk.CTk):
                         f'{task}: completed successfully.' if code == 0 else f'{task}: failed (exit code {code}).',
                         '#70c080' if code == 0 else '#f08080')
                     self.running_task = None
+                    self.update_task_buttons()
+                elif event[0] == 'selected_upgrades_done':
+                    _, total, failures = event
+                    self.append_log(f'--- Update Selected: {total - failures}/{total} succeeded, {failures} failed ---')
+                    self.set_maintenance_status(
+                        f'Update Selected: {total - failures}/{total} succeeded. Run Check for Updates to refresh the list.',
+                        '#70c080' if failures == 0 else '#f08080')
+                    self.running_task = None
+                    self.selected_update_ids.clear()
+                    self.available_updates = None  # Never show stale results after installation.
+                    self.render_available_updates()
                     self.update_task_buttons()
                 elif event[0] == 'cleanup_done':
                     _, mode, selected, result = event
