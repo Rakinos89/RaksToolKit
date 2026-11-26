@@ -48,6 +48,21 @@ class RaksToolKit(ctk.CTk):
         self.admin = is_admin()
         self.privacy_mode = load_privacy()
         self.accent_color = load_accent()
+        # Set the CTk defaults before creating any controls. This prevents
+        # the default green from appearing during initial widget rendering.
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
+        ctk.ThemeManager.theme['CTkButton']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkButton']['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkCheckBox']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkCheckBox']['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkRadioButton']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkRadioButton']['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkProgressBar']['progress_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_hover_color'] = hover
+        ctk.ThemeManager.theme['CTkSwitch']['progress_color'] = primary
+
         self.events = queue.Queue()
         self.running_task = None
         self.current_page = 'Dashboard'
@@ -162,6 +177,15 @@ class RaksToolKit(ctk.CTk):
             self.accent_color = previous
             return
         self.accent_color = name
+        primary, hover = ACCENTS.get(name, ACCENTS[DEFAULT_ACCENT])
+        for widget_type in ('CTkButton', 'CTkCheckBox', 'CTkRadioButton'):
+            ctk.ThemeManager.theme[widget_type]['fg_color'] = primary
+            ctk.ThemeManager.theme[widget_type]['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkProgressBar']['progress_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_hover_color'] = hover
+        ctk.ThemeManager.theme['CTkSwitch']['progress_color'] = primary
         self.apply_accent()
 
     def display_text(self, value):
@@ -331,8 +355,8 @@ class RaksToolKit(ctk.CTk):
         self.power_plan_status_label.pack(pady=(4, 8))
         self.update_power_plan_buttons()
         ctk.CTkLabel(scroll,
-                     text='GPU metrics use NVIDIA nvidia-smi when available. Other vendors may show '
-                          'unavailable metrics. TCP latency is not in-game ping.',
+                     text='GPU metrics use NVIDIA nvidia-smi or AMD ADLX when a supported adapter is '
+                          'present. Unsupported readings stay unavailable. TCP latency is not in-game ping.',
                      wraplength=690, text_color='gray70').pack(padx=25, pady=(14, 20))
         self.start_gaming_refresh()
         self.start_power_plan_refresh()
@@ -489,7 +513,9 @@ class RaksToolKit(ctk.CTk):
         if self.admin:
             ctk.CTkLabel(self.content, text='Running as Administrator', text_color='#70c080').pack(pady=(0, 10))
         else:
+            primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
             ctk.CTkButton(self.content, text='Restart as Administrator',
+                          fg_color=primary, hover_color=hover,
                           command=self.request_elevation).pack(pady=(0, 10))
         tabs = ctk.CTkFrame(self.content, fg_color='#454545', corner_radius=7)
         tabs.pack(padx=15, pady=(0, 10))
@@ -527,6 +553,7 @@ class RaksToolKit(ctk.CTk):
             )
 
     def show_maintenance_tab(self, tab):
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
         self.current_tab = tab
         self.update_maintenance_tab_colors()
         for widget in self.tab_content.winfo_children():
@@ -537,6 +564,7 @@ class RaksToolKit(ctk.CTk):
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
             for task in ('DISM RestoreHealth', 'SFC Scan'):
                 button = ctk.CTkButton(self.tab_content, text=task, width=200, height=36,
+                                       fg_color=primary, hover_color=hover,
                                        command=lambda t=task: self.start_task(t))
                 button.pack(pady=6)
                 self.task_buttons.append(button)
@@ -547,12 +575,15 @@ class RaksToolKit(ctk.CTk):
             controls = ctk.CTkFrame(self.tab_content, fg_color='transparent')
             controls.pack(pady=6)
             check_button = ctk.CTkButton(controls, text='Check for Updates', width=200, height=36,
+                                         fg_color=primary, hover_color=hover,
                                          command=self.start_update_check)
             check_button.pack(side='left', padx=6)
             update_button = ctk.CTkButton(controls, text='Update All', width=200, height=36,
+                                          fg_color=primary, hover_color=hover,
                                           command=self.start_upgrade_all)
             update_button.pack(side='left', padx=6)
             selected_button = ctk.CTkButton(controls, text='Update Selected', width=170, height=36,
+                                            fg_color=primary, hover_color=hover,
                                             command=self.start_upgrade_selected)
             selected_button.pack(side='left', padx=6)
             self.task_buttons.extend((check_button, update_button, selected_button))
@@ -566,6 +597,7 @@ class RaksToolKit(ctk.CTk):
             ctk.CTkLabel(self.tab_content, text='DNS Resolver Maintenance',
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
             button = ctk.CTkButton(self.tab_content, text='Flush DNS Cache', width=200,
+                                   fg_color=primary, hover_color=hover,
                                    command=lambda: self.start_task('Flush DNS Cache'))
             button.pack(pady=10)
             self.task_buttons.append(button)
@@ -576,11 +608,13 @@ class RaksToolKit(ctk.CTk):
             for name in locations():
                 var = ctk.BooleanVar(value=name == 'User temporary files')
                 self.cleanup_selection[name] = var
-                ctk.CTkCheckBox(self.tab_content, text=name, variable=var).pack(anchor='w', padx=30, pady=3)
+                ctk.CTkCheckBox(self.tab_content, text=name, variable=var,
+                                fg_color=primary, hover_color=hover).pack(anchor='w', padx=30, pady=3)
             controls = ctk.CTkFrame(self.tab_content, fg_color='transparent')
             controls.pack(pady=12)
             for label, mode in (('Scan', 'scan'), ('Dry Run', 'dry'), ('Clean Selected', 'clean')):
                 button = ctk.CTkButton(controls, text=label, width=130,
+                                       fg_color=primary, hover_color=hover,
                                        command=lambda m=mode: self.start_cleanup(m))
                 button.pack(side='left', padx=5)
                 self.task_buttons.append(button)
@@ -610,9 +644,11 @@ class RaksToolKit(ctk.CTk):
         for col, label, weight in ((0, 'Select', 0), (1, 'Application', 3), (2, 'Installed', 1), (3, 'Available', 1)):
             self.updates_table.grid_columnconfigure(col, weight=weight)
             ctk.CTkLabel(self.updates_table, text=label, font=('Segoe UI', 12, 'bold'), anchor='w').grid(row=0, column=col, sticky='ew', padx=8, pady=3)
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
         for index, (name, package_id, installed, available) in enumerate(updates, 1):
             selected_var = ctk.BooleanVar(value=package_id in self.selected_update_ids)
             ctk.CTkCheckBox(self.updates_table, text='', width=24, variable=selected_var,
+                            fg_color=primary, hover_color=hover,
                             command=lambda pid=package_id, var=selected_var: self.toggle_update_selection(pid, var.get())
                             ).grid(row=index, column=0, sticky='w', padx=8, pady=3)
             for col, value in enumerate((f'{name}\n{package_id}', installed, available), 1):

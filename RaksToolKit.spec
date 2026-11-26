@@ -6,7 +6,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('assets/icons/rakstoolkit.ico', 'assets/icons')],
-    hiddenimports=[],
+    hiddenimports=['adlx', 'adlx.ADLX'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -14,6 +14,12 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+# amdadlx64.dll is supplied by the AMD driver. Bundling a copy would pin a
+# driver library that may not match the installed software.
+a.binaries = [
+    entry for entry in a.binaries
+    if 'amdadlx' not in str(entry[0]).lower() and 'amdadlx' not in str(entry[1]).lower()
+]
 pyz = PYZ(a.pure)
 
 exe = EXE(
