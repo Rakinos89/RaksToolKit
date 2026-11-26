@@ -18,7 +18,7 @@ from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
-from modules.software_updates import check_updates, upgrade_all
+from modules.software_updates import check_updates, upgrade_all, parse_upgrade_table
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
 VERSION = '1.1.0-dev'
@@ -55,6 +55,7 @@ class RaksToolKit(ctk.CTk):
         self.maintenance_log = ['Ready to run maintenance tasks.']
         self.maintenance_state = ('Ready for maintenance tasks.', 'gray70')
         self.task_buttons = []
+        self.available_updates = None
         self.gaming_busy = False
         self.gaming_plans = {}
         self.power_plan_status = ('Power plan: Ready.', 'gray70')
@@ -399,6 +400,11 @@ class RaksToolKit(ctk.CTk):
                                           command=self.start_upgrade_all)
             update_button.pack(side='left', padx=6)
             self.task_buttons.extend((check_button, update_button))
+            self.updates_count_label = ctk.CTkLabel(self.tab_content, text='Run Check for Updates to populate the table.', text_color='gray70')
+            self.updates_count_label.pack(pady=(10, 4))
+            self.updates_table = ctk.CTkScrollableFrame(self.tab_content, height=155)
+            self.updates_table.pack(fill='x', padx=12, pady=(0, 6))
+            self.render_available_updates()
         elif tab == 'Network':
             ctk.CTkLabel(self.tab_content, text='DNS Resolver Maintenance',
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
@@ -422,6 +428,24 @@ class RaksToolKit(ctk.CTk):
                 button.pack(side='left', padx=5)
                 self.task_buttons.append(button)
         self.update_task_buttons()
+
+    def render_available_updates(self):
+        """Render saved update results; safe to call after tab navigation."""
+        if self.current_page != 'Maintenance' or self.current_tab != 'Software Updates':
+            return
+        for child in self.updates_table.winfo_children():
+            child.destroy()
+        updates = self.available_updates
+        if updates is None:
+            self.updates_count_label.configure(text='Run Check for Updates to populate the table.')
+            return
+        self.updates_count_label.configure(text=f'{len(updates)} available update(s)' if updates else 'No updates found in the recognized winget table.')
+        for col, label, weight in ((0, 'Application', 3), (1, 'Installed', 1), (2, 'Available', 1)):
+            self.updates_table.grid_columnconfigure(col, weight=weight)
+            ctk.CTkLabel(self.updates_table, text=label, font=('Segoe UI', 12, 'bold'), anchor='w').grid(row=0, column=col, sticky='ew', padx=8, pady=3)
+        for index, (name, package_id, installed, available) in enumerate(updates, 1):
+            for col, value in enumerate((f'{name}\n{package_id}', installed, available)):
+                ctk.CTkLabel(self.updates_table, text=self.display_text(value), anchor='w', justify='left').grid(row=index, column=col, sticky='ew', padx=8, pady=3)
 
     def update_task_buttons(self):
         for button in self.task_buttons:
@@ -527,13 +551,20 @@ class RaksToolKit(ctk.CTk):
         self.running_task = task
         self.set_maintenance_status('Checking for application updates...', '#e0b66a')
         self.update_task_buttons()
+        self.available_updates = None
+        self.render_available_updates()
         self.append_log('\n--- Checking available updates (winget upgrade) ---')
         threading.Thread(target=self.update_check_worker, daemon=True).start()
 
     def update_check_worker(self):
         task = 'Check for Updates'
         try:
-            code = check_updates(lambda line: self.events.put(('line', line)))
+            captured = []
+            def receive(line):
+                captured.append(line)
+                self.events.put(('line', line))
+            code = check_updates(receive)
+            self.events.put(('updates_result', code, parse_upgrade_table(captured)))
             self.events.put(('done', task, code))
         except Exception as exc:
             self.events.put(('error', task, str(exc)))
@@ -598,6 +629,14 @@ class RaksToolKit(ctk.CTk):
                 event = self.events.get_nowait()
                 if event[0] == 'line':
                     self.append_log(event[1])
+                elif event[0] == 'updates_result':
+                    _, code, parsed = event
+                    self.available_updates = parsed if code == 0 else None
+                    if code == 0 and parsed is None:
+                        self.append_log('Update table could not be parsed (possibly localized output). See raw winget output above.')
+                    self.render_available_updates()
+                    if self.current_page == 'Maintenance' and self.current_tab == 'Software Updates' and parsed is None:
+                        self.updates_count_label.configure(text='Table unavailable. See command output below.')
                 elif event[0] == 'done':
                     _, task, code = event
                     self.append_log(f'--- {task}: {"completed" if code == 0 else "failed"} (exit code {code}) ---')
