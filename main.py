@@ -18,9 +18,10 @@ from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
+from modules.software_updates import check_updates
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '1.0.0'
+VERSION = '1.1.0-dev'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('green')
 
@@ -356,7 +357,7 @@ class RaksToolKit(ctk.CTk):
             ctk.CTkButton(self.content, text='Restart as Administrator',
                           command=self.request_elevation).pack(pady=(0, 10))
         tabs = ctk.CTkSegmentedButton(self.content,
-                                     values=['System Repair', 'Smart Cleanup', 'Network'],
+                                     values=['System Repair', 'Smart Cleanup', 'Network', 'Software Updates'],
                                      command=self.show_maintenance_tab)
         tabs.pack(padx=15, pady=(0, 10))
         self.tab_content = ctk.CTkFrame(self.content, fg_color='transparent')
@@ -385,6 +386,14 @@ class RaksToolKit(ctk.CTk):
                                        command=lambda t=task: self.start_task(t))
                 button.pack(pady=6)
                 self.task_buttons.append(button)
+        elif tab == 'Software Updates':
+            ctk.CTkLabel(self.tab_content, text='Available Application Updates',
+                         font=('Segoe UI', 17, 'bold')).pack(pady=10)
+            ctk.CTkLabel(self.tab_content, text='Read-only check using winget. No software will be installed.').pack(pady=(0, 8))
+            button = ctk.CTkButton(self.tab_content, text='Check for Updates', width=200, height=36,
+                                   command=self.start_update_check)
+            button.pack(pady=6)
+            self.task_buttons.append(button)
         elif tab == 'Network':
             ctk.CTkLabel(self.tab_content, text='DNS Resolver Maintenance',
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
@@ -502,6 +511,24 @@ class RaksToolKit(ctk.CTk):
                         if line.strip():
                             self.events.put(('line', line.rstrip()))
                     code = proc.wait()
+            self.events.put(('done', task, code))
+        except Exception as exc:
+            self.events.put(('error', task, str(exc)))
+
+    def start_update_check(self):
+        if self.running_task:
+            return
+        task = 'Check for Updates'
+        self.running_task = task
+        self.set_maintenance_status('Checking for application updates...', '#e0b66a')
+        self.update_task_buttons()
+        self.append_log('\n--- Checking available updates (winget upgrade) ---')
+        threading.Thread(target=self.update_check_worker, daemon=True).start()
+
+    def update_check_worker(self):
+        task = 'Check for Updates'
+        try:
+            code = check_updates(lambda line: self.events.put(('line', line)))
             self.events.put(('done', task, code))
         except Exception as exc:
             self.events.put(('error', task, str(exc)))
