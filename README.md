@@ -82,19 +82,40 @@ Some maintenance and update operations require administrator privileges.
 
 ## Screenshots
 
-These screenshots may show an earlier interface version; updated RaksToolKit screenshots can replace them later.
+Screenshots of RaksToolKit v1.1.0.
 
 ### Dashboard
 ![RaksToolKit Dashboard](assets/screenshots/rakstoolkit_dashboard.png)
 
 ### Maintenance
-![RaksToolKit Maintenance](assets/screenshots/rakstoolkit_maintenance.png)
+
+**System Repair**
+
+![System Repair](assets/screenshots/rakstoolkit_maintenance_system_repair.png)
+
+**Smart Cleanup**
+
+![Smart Cleanup](assets/screenshots/rakstoolkit_maintenance_smart_cleanup.png)
+
+**Network Utilities**
+
+![Maintenance Network](assets/screenshots/rakstoolkit_maintenance_network.png)
+
+**Software Updates**
+
+![Software Updates](assets/screenshots/rakstoolkit_maintenance_software_updates.png)
 
 ### Gaming
-![RaksToolKit Gaming](assets/screenshots/rakstoolkit_gaming.png)
+![Gaming and GPU Monitoring](assets/screenshots/rakstoolkit_gaming.png)
+
+### Network Overview
+![Network Overview](assets/screenshots/rakstoolkit_network.png)
+
+### Settings
+![Settings](assets/screenshots/rakstoolkit_settings.png)
 
 ### Activity History
-![RaksToolKit Activity History](assets/screenshots/rakstoolkit_activity.png)
+![Activity History](assets/screenshots/rakstoolkit_activity.png)
 
 ## Download and Run (Windows)
 
