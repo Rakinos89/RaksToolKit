@@ -25,6 +25,22 @@ def migrate_settings():
         pass
 
 
+def read_settings():
+    migrate_settings()
+    try:
+        data = json.loads(SETTINGS.read_text(encoding='utf-8'))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def write_settings(data):
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS.with_suffix('.tmp')
+    tmp.write_text(json.dumps(data, indent=2), encoding='utf-8')
+    tmp.replace(SETTINGS)
+
+
 def load_privacy():
     migrate_settings()
     try:
@@ -34,12 +50,9 @@ def load_privacy():
 
 
 def save_privacy(value):
-    migrate_settings()
-    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-    tmp = SETTINGS.with_suffix('.tmp')
-    tmp.write_text(json.dumps({'privacy_mode': bool(value)}, indent=2), encoding='utf-8')
-    tmp.replace(SETTINGS)
-
+    data = read_settings()
+    data['privacy_mode'] = bool(value)
+    write_settings(data)
 
 def redact(value, enabled):
     text = str(value)
