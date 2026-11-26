@@ -18,6 +18,7 @@ from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
+from modules.network_overview import get_network_overview
 from modules.software_updates import check_updates, upgrade_all, upgrade_package, parse_upgrade_table
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
@@ -47,6 +48,21 @@ class RaksToolKit(ctk.CTk):
         self.admin = is_admin()
         self.privacy_mode = load_privacy()
         self.accent_color = load_accent()
+        # Set the CTk defaults before creating any controls. This prevents
+        # the default green from appearing during initial widget rendering.
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
+        ctk.ThemeManager.theme['CTkButton']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkButton']['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkCheckBox']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkCheckBox']['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkRadioButton']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkRadioButton']['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkProgressBar']['progress_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_hover_color'] = hover
+        ctk.ThemeManager.theme['CTkSwitch']['progress_color'] = primary
+
         self.events = queue.Queue()
         self.running_task = None
         self.current_page = 'Dashboard'
@@ -66,6 +82,8 @@ class RaksToolKit(ctk.CTk):
         self.power_plan_refresh_busy = False
         self.power_plan_buttons = []
         self.last_gaming_refresh = 0
+        self.network_refreshing = False
+        self.network_snapshot = None
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -105,6 +123,8 @@ class RaksToolKit(ctk.CTk):
             self.build_activity()
         elif page == 'Settings':
             self.build_settings()
+        elif page == 'Network':
+            self.build_network_overview()
         else:
             ctk.CTkLabel(self.content, text=f'{page} tools coming in a future release.').pack(pady=25)
         self.apply_accent()
@@ -157,10 +177,80 @@ class RaksToolKit(ctk.CTk):
             self.accent_color = previous
             return
         self.accent_color = name
+        primary, hover = ACCENTS.get(name, ACCENTS[DEFAULT_ACCENT])
+        for widget_type in ('CTkButton', 'CTkCheckBox', 'CTkRadioButton'):
+            ctk.ThemeManager.theme[widget_type]['fg_color'] = primary
+            ctk.ThemeManager.theme[widget_type]['hover_color'] = hover
+        ctk.ThemeManager.theme['CTkProgressBar']['progress_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['fg_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_color'] = primary
+        ctk.ThemeManager.theme['CTkOptionMenu']['button_hover_color'] = hover
+        ctk.ThemeManager.theme['CTkSwitch']['progress_color'] = primary
         self.apply_accent()
 
     def display_text(self, value):
         return redact(value, self.privacy_mode)
+
+    def build_network_overview(self):
+        """Read-only adapter overview, refreshed off the UI thread."""
+        ctk.CTkLabel(self.content, text='Network Overview',
+                     font=('Segoe UI', 19, 'bold')).pack(pady=(8, 8))
+        ctk.CTkLabel(self.content,
+                     text='Active network adapter and connection details (read-only)',
+                     text_color='gray70').pack(pady=(0, 12))
+        self.network_refresh_button = ctk.CTkButton(
+            self.content, text='Refresh Network Info', width=210,
+            command=self.refresh_network_overview)
+        self.network_refresh_button.pack(pady=(0, 12))
+        self.network_status_label = ctk.CTkLabel(
+            self.content, text='Ready to check network information.', text_color='gray70')
+        self.network_status_label.pack(pady=(0, 12))
+        panel = ctk.CTkFrame(self.content)
+        panel.pack(fill='x', padx=28, pady=8)
+        self.network_value_labels = {}
+        for row, (key, label) in enumerate((
+            ('status', 'Connection status'), ('adapter', 'Active adapter'),
+            ('ipv4', 'IPv4 address'), ('gateway', 'Default gateway'),
+            ('dns', 'DNS servers'), ('mac', 'MAC address'),
+            ('speed', 'Adapter speed'))):
+            ctk.CTkLabel(panel, text=label + ':', anchor='w',
+                         font=('Segoe UI', 13, 'bold')).grid(
+                             row=row, column=0, sticky='w', padx=(18, 14), pady=9)
+            value = ctk.CTkLabel(panel, text='Not available', anchor='w',
+                                 wraplength=480, justify='left')
+            value.grid(row=row, column=1, sticky='w', padx=(0, 18), pady=9)
+            self.network_value_labels[key] = value
+        panel.grid_columnconfigure(1, weight=1)
+        if self.network_snapshot is None:
+            self.refresh_network_overview()
+        else:
+            self.render_network_overview(self.network_snapshot)
+
+    def refresh_network_overview(self):
+        if self.network_refreshing:
+            return
+        self.network_refreshing = True
+        self.network_refresh_button.configure(state='disabled')
+        self.network_status_label.configure(text='Reading network information...')
+        threading.Thread(target=self.network_overview_worker, daemon=True).start()
+
+    def network_overview_worker(self):
+        try:
+            self.events.put(('network_overview_result', get_network_overview(), None))
+        except Exception as exc:
+            self.events.put(('network_overview_result', None, str(exc)))
+
+    def render_network_overview(self, data):
+        if self.current_page != 'Network':
+            return
+        for key, label in self.network_value_labels.items():
+            value = data.get(key, 'Not available')
+            if key in ('ipv4', 'gateway', 'dns', 'mac') and self.privacy_mode:
+                value = '[hidden]'
+            else:
+                value = self.display_text(value)
+            label.configure(text=str(value))
+        self.network_status_label.configure(text='Network information refreshed.')
 
     def build_settings(self):
         ctk.CTkLabel(self.content, text='Privacy & Preferences', font=('Segoe UI',19,'bold')).pack(pady=(8,15))
@@ -265,8 +355,8 @@ class RaksToolKit(ctk.CTk):
         self.power_plan_status_label.pack(pady=(4, 8))
         self.update_power_plan_buttons()
         ctk.CTkLabel(scroll,
-                     text='GPU metrics use NVIDIA nvidia-smi when available. Other vendors may show '
-                          'unavailable metrics. TCP latency is not in-game ping.',
+                     text='GPU metrics use NVIDIA nvidia-smi or AMD ADLX when a supported adapter is '
+                          'present. Unsupported readings stay unavailable. TCP latency is not in-game ping.',
                      wraplength=690, text_color='gray70').pack(padx=25, pady=(14, 20))
         self.start_gaming_refresh()
         self.start_power_plan_refresh()
@@ -423,7 +513,9 @@ class RaksToolKit(ctk.CTk):
         if self.admin:
             ctk.CTkLabel(self.content, text='Running as Administrator', text_color='#70c080').pack(pady=(0, 10))
         else:
+            primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
             ctk.CTkButton(self.content, text='Restart as Administrator',
+                          fg_color=primary, hover_color=hover,
                           command=self.request_elevation).pack(pady=(0, 10))
         tabs = ctk.CTkFrame(self.content, fg_color='#454545', corner_radius=7)
         tabs.pack(padx=15, pady=(0, 10))
@@ -461,6 +553,7 @@ class RaksToolKit(ctk.CTk):
             )
 
     def show_maintenance_tab(self, tab):
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
         self.current_tab = tab
         self.update_maintenance_tab_colors()
         for widget in self.tab_content.winfo_children():
@@ -471,6 +564,7 @@ class RaksToolKit(ctk.CTk):
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
             for task in ('DISM RestoreHealth', 'SFC Scan'):
                 button = ctk.CTkButton(self.tab_content, text=task, width=200, height=36,
+                                       fg_color=primary, hover_color=hover,
                                        command=lambda t=task: self.start_task(t))
                 button.pack(pady=6)
                 self.task_buttons.append(button)
@@ -481,12 +575,15 @@ class RaksToolKit(ctk.CTk):
             controls = ctk.CTkFrame(self.tab_content, fg_color='transparent')
             controls.pack(pady=6)
             check_button = ctk.CTkButton(controls, text='Check for Updates', width=200, height=36,
+                                         fg_color=primary, hover_color=hover,
                                          command=self.start_update_check)
             check_button.pack(side='left', padx=6)
             update_button = ctk.CTkButton(controls, text='Update All', width=200, height=36,
+                                          fg_color=primary, hover_color=hover,
                                           command=self.start_upgrade_all)
             update_button.pack(side='left', padx=6)
             selected_button = ctk.CTkButton(controls, text='Update Selected', width=170, height=36,
+                                            fg_color=primary, hover_color=hover,
                                             command=self.start_upgrade_selected)
             selected_button.pack(side='left', padx=6)
             self.task_buttons.extend((check_button, update_button, selected_button))
@@ -500,6 +597,7 @@ class RaksToolKit(ctk.CTk):
             ctk.CTkLabel(self.tab_content, text='DNS Resolver Maintenance',
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
             button = ctk.CTkButton(self.tab_content, text='Flush DNS Cache', width=200,
+                                   fg_color=primary, hover_color=hover,
                                    command=lambda: self.start_task('Flush DNS Cache'))
             button.pack(pady=10)
             self.task_buttons.append(button)
@@ -510,11 +608,13 @@ class RaksToolKit(ctk.CTk):
             for name in locations():
                 var = ctk.BooleanVar(value=name == 'User temporary files')
                 self.cleanup_selection[name] = var
-                ctk.CTkCheckBox(self.tab_content, text=name, variable=var).pack(anchor='w', padx=30, pady=3)
+                ctk.CTkCheckBox(self.tab_content, text=name, variable=var,
+                                fg_color=primary, hover_color=hover).pack(anchor='w', padx=30, pady=3)
             controls = ctk.CTkFrame(self.tab_content, fg_color='transparent')
             controls.pack(pady=12)
             for label, mode in (('Scan', 'scan'), ('Dry Run', 'dry'), ('Clean Selected', 'clean')):
                 button = ctk.CTkButton(controls, text=label, width=130,
+                                       fg_color=primary, hover_color=hover,
                                        command=lambda m=mode: self.start_cleanup(m))
                 button.pack(side='left', padx=5)
                 self.task_buttons.append(button)
@@ -544,9 +644,11 @@ class RaksToolKit(ctk.CTk):
         for col, label, weight in ((0, 'Select', 0), (1, 'Application', 3), (2, 'Installed', 1), (3, 'Available', 1)):
             self.updates_table.grid_columnconfigure(col, weight=weight)
             ctk.CTkLabel(self.updates_table, text=label, font=('Segoe UI', 12, 'bold'), anchor='w').grid(row=0, column=col, sticky='ew', padx=8, pady=3)
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
         for index, (name, package_id, installed, available) in enumerate(updates, 1):
             selected_var = ctk.BooleanVar(value=package_id in self.selected_update_ids)
             ctk.CTkCheckBox(self.updates_table, text='', width=24, variable=selected_var,
+                            fg_color=primary, hover_color=hover,
                             command=lambda pid=package_id, var=selected_var: self.toggle_update_selection(pid, var.get())
                             ).grid(row=index, column=0, sticky='w', padx=8, pady=3)
             for col, value in enumerate((f'{name}\n{package_id}', installed, available), 1):
@@ -776,7 +878,18 @@ class RaksToolKit(ctk.CTk):
         try:
             while True:
                 event = self.events.get_nowait()
-                if event[0] == 'line':
+                if event[0] == 'network_overview_result':
+                    _, data, error = event
+                    self.network_refreshing = False
+                    if data is not None:
+                        self.network_snapshot = data
+                    if self.current_page == 'Network':
+                        self.network_refresh_button.configure(state='normal')
+                        if error:
+                            self.network_status_label.configure(text=f'Unable to read network information: {error}')
+                        else:
+                            self.render_network_overview(data)
+                elif event[0] == 'line':
                     self.append_log(event[1])
                 elif event[0] == 'updates_result':
                     _, code, parsed = event

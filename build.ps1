@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
-$version = '1.0.0'
+$version = '1.1.0'
 $python = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 $icon = Join-Path $PSScriptRoot 'assets\icons\rakstoolkit.ico'
 if (-not (Test-Path $python)) { throw 'Missing .venv\Scripts\python.exe. Create the virtual environment and install requirements first.' }
@@ -11,7 +11,7 @@ if (-not (Test-Path $icon)) { throw 'Missing assets\icons\rakstoolkit.ico.' }
 & $python -m PyInstaller --version
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller is not installed in .venv. Run: .\.venv\Scripts\python.exe -m pip install pyinstaller' }
 
-& $python -m PyInstaller --noconfirm --clean --windowed --onedir --name RaksToolKit --icon $icon --add-data 'assets/icons/rakstoolkit.ico;assets/icons' main.py
+& $python -m PyInstaller --noconfirm --clean RaksToolKit.spec
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
 
 $buildFolder = Join-Path $PSScriptRoot 'dist\RaksToolKit'

@@ -7,6 +7,16 @@ import subprocess
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 NVIDIA_FIELDS = ('name', 'utilization.gpu', 'temperature.gpu', 'memory.used',
                  'memory.total', 'clocks.gr', 'clocks.mem', 'power.draw')
+METRIC_KEYS = ('name', 'vendor', 'utilization', 'temperature', 'vram',
+               'core_clock', 'memory_clock', 'power')
+
+
+def blank_gpu_info(name='Unavailable', vendor='Unknown'):
+    """Normalized metrics shared by the NVIDIA and AMD providers."""
+    info = {key: 'Unavailable' for key in METRIC_KEYS}
+    info['name'] = name
+    info['vendor'] = vendor
+    return info
 
 
 def _value(raw, unit):
@@ -35,21 +45,18 @@ def _adapter_names():
     return []
 
 
-def gpu_info():
-    """Return display-ready GPU metrics; never require a vendor utility."""
-    names = _adapter_names()
-    info = {'name': ', '.join(names) or 'Unavailable', 'vendor': 'Unknown',
-            'utilization': 'Unavailable', 'temperature': 'Unavailable',
-            'vram': 'Unavailable', 'core_clock': 'Unavailable',
-            'memory_clock': 'Unavailable', 'power': 'Unavailable'}
+def _vendor(names):
     lower_names = ' '.join(names).lower()
     if 'nvidia' in lower_names or 'geforce' in lower_names:
-        info['vendor'] = 'NVIDIA'
-    elif 'amd' in lower_names or 'radeon' in lower_names:
-        info['vendor'] = 'AMD'
-    elif 'intel' in lower_names:
-        info['vendor'] = 'Intel'
+        return 'NVIDIA'
+    if 'amd' in lower_names or 'radeon' in lower_names:
+        return 'AMD'
+    if 'intel' in lower_names:
+        return 'Intel'
+    return 'Unknown'
 
+
+def _fill_nvidia(info):
     executable = shutil.which('nvidia-smi')
     if not executable:
         return info
@@ -75,4 +82,34 @@ def gpu_info():
         info['power'] = _value(power, 'W')
     except (OSError, subprocess.TimeoutExpired, ValueError, StopIteration, csv.Error):
         pass
+    return info
+
+
+def _fill_amd(info):
+    from modules.amd_gpu import read_amd_metrics
+    try:
+        amd = read_amd_metrics()
+    except Exception:
+        return info
+    if not isinstance(amd, dict):
+        return info
+    fallback_name = info['name']
+    for key in METRIC_KEYS:
+        value = amd.get(key)
+        if value not in (None, ''):
+            info[key] = value
+    info['vendor'] = 'AMD'
+    if info['name'] in (None, '', 'Unavailable'):
+        info['name'] = fallback_name
+    return info
+
+
+def gpu_info():
+    """Return display-ready GPU metrics; never require a vendor utility."""
+    names = _adapter_names()
+    info = blank_gpu_info(', '.join(names) or 'Unavailable', _vendor(names))
+    if info['vendor'] == 'NVIDIA':
+        return _fill_nvidia(info)
+    if info['vendor'] == 'AMD':
+        return _fill_amd(info)
     return info
