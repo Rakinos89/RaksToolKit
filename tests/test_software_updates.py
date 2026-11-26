@@ -35,6 +35,20 @@ class SoftwareUpdatesTests(unittest.TestCase):
         self.assertEqual(software_updates.upgrade_all(lambda _: None), 0)
         self.assertEqual(popen.call_args.args[0], [r'C:\winget.exe', 'upgrade', '--all'])
 
+    @patch('modules.software_updates.subprocess.Popen')
+    @patch('modules.software_updates.shutil.which', return_value=r'C:\winget.exe')
+    def test_upgrade_package_uses_exact_id(self, _, popen):
+        popen.return_value = FakeProcess()
+        self.assertEqual(software_updates.upgrade_package('LizardByte.Sunshine', lambda _: None), 0)
+        self.assertEqual(popen.call_args.args[0],
+                         [r'C:\winget.exe', 'upgrade', '--id', 'LizardByte.Sunshine', '--exact'])
+
+    def test_upgrade_package_rejects_invalid_ids(self):
+        for value in ('', '--all', 'foo bar', 'foo;echo', None):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    software_updates.upgrade_package(value, lambda _: None)
+
     @patch('modules.software_updates.shutil.which', return_value=None)
     def test_missing_winget(self, _):
         with self.assertRaises(FileNotFoundError):

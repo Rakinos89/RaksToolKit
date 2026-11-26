@@ -36,6 +36,13 @@ def upgrade_all(on_line):
     return _run_winget(['upgrade', '--all'], on_line)
 
 
+def upgrade_package(package_id, on_line):
+    """Upgrade exactly one winget package by ID, without invoking a shell."""
+    if not isinstance(package_id, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+-]*', package_id):
+        raise ValueError('Invalid winget package ID')
+    return _run_winget(['upgrade', '--id', package_id, '--exact'], on_line)
+
+
 def parse_upgrade_table(lines):
     """Parse English winget's fixed-width upgrade table.
 
