@@ -4,17 +4,19 @@
 
 RaksToolKit is an open-source Windows desktop application that brings practical system tools into one graphical interface. It provides monitoring, maintenance, gaming utilities, software update checks, and privacy-conscious display options. Download the portable Windows build to use it without installing Python.
 
+
 ## Download for Windows
 
-**Latest published stable release: v1.0.0**
+**Latest stable release: v1.1.0**
 
-**[Download the latest published RaksToolKit release](https://github.com/Rakinos89/RaksToolKit/releases/latest)**
+**[Download RaksToolKit v1.1.0 for Windows x64](https://github.com/Rakinos89/RaksToolKit/releases/tag/v1.1.0)**
 
-Under **Assets**, download the `RaksToolKit-<version>-Windows-x64.zip` file, extract the entire archive, and run `RaksToolKit.exe` from the extracted `RaksToolKit` folder. Keep the `_internal` folder beside the executable. **No separate Python installation or IDE required.**
+Under **Assets**, download `RaksToolKit-v1.1.0-Windows-x64.zip`, extract the entire archive, and run `RaksToolKit.exe` from the extracted `RaksToolKit` folder. Keep the `_internal` folder beside the executable.
 
-> **Release preparation:** v1.1.0 features are merged into `main`, but the v1.1.0 release has not yet been published. The download above continues to point to the latest published release until then.
+**No separate Python installation or IDE required.**
 
 See [Download and Run](#download-and-run-windows) for installation and security notes.
+
 
 ## Features
 
