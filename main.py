@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 import subprocess
 import threading
-from datetime import datetime
 from tkinter import TclError, messagebox
 
 import customtkinter as ctk
@@ -14,6 +13,7 @@ import psutil
 
 from modules.activity import LOG_PATH, read_recent, record
 from modules.privacy import load_privacy, save_privacy, redact
+from modules.appearance import ACCENTS, DEFAULT_ACCENT, load_accent, save_accent
 from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
@@ -46,6 +46,7 @@ class RaksToolKit(ctk.CTk):
         self.minsize(900, 600)
         self.admin = is_admin()
         self.privacy_mode = load_privacy()
+        self.accent_color = load_accent()
         self.events = queue.Queue()
         self.running_task = None
         self.current_page = 'Dashboard'
@@ -55,6 +56,7 @@ class RaksToolKit(ctk.CTk):
         self.maintenance_log = ['Ready to run maintenance tasks.']
         self.maintenance_state = ('Ready for maintenance tasks.', 'gray70')
         self.task_buttons = []
+        self.maintenance_tab_buttons = {}
         self.available_updates = None
         self.selected_update_ids = set()
         self.refresh_after_selected = False
@@ -86,6 +88,8 @@ class RaksToolKit(ctk.CTk):
 
     def show_page(self, page):
         self.current_page = page
+        self.accent_palette_buttons = {}
+        self.maintenance_tab_buttons = {}
         for widget in self.content.winfo_children():
             widget.destroy()
         self.task_buttons = []
@@ -103,6 +107,57 @@ class RaksToolKit(ctk.CTk):
             self.build_settings()
         else:
             ctk.CTkLabel(self.content, text=f'{page} tools coming in a future release.').pack(pady=25)
+        self.apply_accent()
+
+    def apply_accent(self):
+        """Apply the saved accent to current widgets and persistent navigation."""
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
+
+        def walk(parent):
+            for widget in parent.winfo_children():
+                # Palette buttons display their own colors, not the active accent.
+                if (widget in getattr(self, 'accent_palette_buttons', {}).values()
+                        or widget in getattr(self, 'maintenance_tab_buttons', {}).values()):
+                    continue
+                try:
+                    if isinstance(widget, ctk.CTkSegmentedButton):
+                        widget.configure(selected_color=primary, selected_hover_color=hover,
+                                         unselected_color='#454545', unselected_hover_color='#555555')
+                    elif isinstance(widget, ctk.CTkButton):
+                        widget.configure(fg_color=primary, hover_color=hover)
+                    elif isinstance(widget, ctk.CTkSwitch):
+                        widget.configure(fg_color='#555555', progress_color=primary,
+                                         button_color='#E5E5E5', button_hover_color='#FFFFFF')
+                    elif isinstance(widget, (ctk.CTkCheckBox, ctk.CTkRadioButton)):
+                        widget.configure(fg_color=primary, hover_color=hover)
+                    elif isinstance(widget, ctk.CTkProgressBar):
+                        widget.configure(progress_color=primary)
+                    elif isinstance(widget, ctk.CTkOptionMenu):
+                        widget.configure(fg_color=primary, button_color=primary,
+                                         button_hover_color=hover)
+                except (TclError, ValueError):
+                    pass  # A widget may be in the process of being destroyed.
+                walk(widget)
+
+        walk(self.sidebar)
+        walk(self.content)
+        self.update_maintenance_tab_colors()
+        for name, button in getattr(self, 'accent_palette_buttons', {}).items():
+            button.configure(text=('✓ ' if name == self.accent_color else '') + name)
+
+    def change_accent(self, name):
+        """Save and immediately apply a selected accent color."""
+        if name not in ACCENTS:
+            return
+        previous = self.accent_color
+        try:
+            save_accent(name)
+        except OSError as exc:
+            messagebox.showerror('Could not save setting', str(exc))
+            self.accent_color = previous
+            return
+        self.accent_color = name
+        self.apply_accent()
 
     def display_text(self, value):
         return redact(value, self.privacy_mode)
@@ -115,6 +170,17 @@ class RaksToolKit(ctk.CTk):
         if self.privacy_mode: switch.select()
         ctk.CTkLabel(self.content,text='Hide the computer name, Windows username, and IPv4 addresses in displayed information.',wraplength=600).pack(pady=8)
         ctk.CTkLabel(self.content,text='This does not erase existing logs, hide other applications, or guarantee that every identifier is masked.',wraplength=600,text_color='gray70').pack(pady=8)
+        ctk.CTkLabel(self.content, text='Appearance', font=('Segoe UI', 19, 'bold')).pack(pady=(18, 6))
+        ctk.CTkLabel(self.content, text='Accent color (applies immediately and is saved)').pack(pady=(0, 7))
+        palette = ctk.CTkFrame(self.content, fg_color='transparent')
+        self.accent_palette_buttons = {}
+        palette.pack(pady=(0, 7))
+        for name, (primary, hover) in ACCENTS.items():
+            button = ctk.CTkButton(palette, text=('✓ ' if name == self.accent_color else '') + name,
+                                   width=104, height=36, fg_color=primary, hover_color=hover,
+                                   command=lambda selected=name: self.change_accent(selected))
+            button.pack(side='left', padx=4)
+            self.accent_palette_buttons[name] = button
         ctk.CTkLabel(self.content,text=f'RaksToolKit version {VERSION}').pack(pady=12)
         ctk.CTkLabel(self.content,text=self.display_text(f'Activity log: {LOG_PATH}'),wraplength=650).pack(pady=12)
 
@@ -359,10 +425,17 @@ class RaksToolKit(ctk.CTk):
         else:
             ctk.CTkButton(self.content, text='Restart as Administrator',
                           command=self.request_elevation).pack(pady=(0, 10))
-        tabs = ctk.CTkSegmentedButton(self.content,
-                                     values=['System Repair', 'Smart Cleanup', 'Network', 'Software Updates'],
-                                     command=self.show_maintenance_tab)
+        tabs = ctk.CTkFrame(self.content, fg_color='#454545', corner_radius=7)
         tabs.pack(padx=15, pady=(0, 10))
+        self.maintenance_tab_buttons = {}
+        for name in ('System Repair', 'Smart Cleanup', 'Network', 'Software Updates'):
+            button = ctk.CTkButton(
+                tabs, text=name, height=26, corner_radius=5,
+                fg_color='#454545', hover_color='#555555',
+                command=lambda selected=name: self.show_maintenance_tab(selected),
+            )
+            button.pack(side='left', padx=2, pady=2)
+            self.maintenance_tab_buttons[name] = button
         self.tab_content = ctk.CTkFrame(self.content, fg_color='transparent')
         self.tab_content.pack(fill='x', padx=15, pady=5)
         self.maintenance_status = ctk.CTkLabel(self.content, text=self.maintenance_state[0],
@@ -373,11 +446,23 @@ class RaksToolKit(ctk.CTk):
         self.maintenance_output.insert('end', self.display_text('\n'.join(self.maintenance_log)) + '\n')
         self.maintenance_output.configure(state='disabled')
         self.maintenance_output.see('end')
-        tabs.set(self.current_tab)
         self.show_maintenance_tab(self.current_tab)
+
+    def update_maintenance_tab_colors(self):
+        """Highlight only the active Maintenance tab using the saved accent."""
+        if self.current_page != 'Maintenance':
+            return
+        primary, hover = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
+        for name, button in self.maintenance_tab_buttons.items():
+            active = name == self.current_tab
+            button.configure(
+                fg_color=primary if active else '#454545',
+                hover_color=hover if active else '#555555',
+            )
 
     def show_maintenance_tab(self, tab):
         self.current_tab = tab
+        self.update_maintenance_tab_colors()
         for widget in self.tab_content.winfo_children():
             widget.destroy()
         self.task_buttons = []
@@ -434,6 +519,8 @@ class RaksToolKit(ctk.CTk):
                 button.pack(side='left', padx=5)
                 self.task_buttons.append(button)
         self.update_task_buttons()
+        # Tab content is created on demand, so theme its new controls immediately.
+        self.apply_accent()
 
     def toggle_update_selection(self, package_id, enabled):
         if enabled:
@@ -498,7 +585,6 @@ class RaksToolKit(ctk.CTk):
     def build_activity(self):
         ctk.CTkLabel(self.content, text='Saved activity history',
                      font=('Segoe UI', 17, 'bold')).pack(pady=8)
-        ctk.CTkButton(self.content, text='Refresh History', command=self.refresh_activity).pack(pady=5)
         self.activity_status = ctk.CTkLabel(self.content, text='Loading history...', text_color='gray70')
         self.activity_status.pack(pady=(0, 2))
         self.activity_output = ctk.CTkTextbox(self.content)
@@ -508,10 +594,10 @@ class RaksToolKit(ctk.CTk):
     def refresh_activity(self):
         try:
             content = read_recent()
-            status = f'History refreshed at {datetime.now():%H:%M:%S} | {len(content.splitlines())} displayed lines'
+            status = f'Activity history | {len(content.splitlines())} displayed lines'
         except OSError as exc:
             content = f'Unable to read log: {exc}'
-            status = 'History refresh failed'
+            status = 'Unable to load activity history'
         self.activity_status.configure(text=status)
         self.activity_output.configure(state='normal')
         self.activity_output.delete('1.0', 'end')
