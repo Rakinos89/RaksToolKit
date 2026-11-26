@@ -18,7 +18,7 @@ from modules.hardware import cpu_name, windows_name
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
-from modules.software_updates import check_updates
+from modules.software_updates import check_updates, upgrade_all
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
 VERSION = '1.1.0-dev'
@@ -389,11 +389,16 @@ class RaksToolKit(ctk.CTk):
         elif tab == 'Software Updates':
             ctk.CTkLabel(self.tab_content, text='Available Application Updates',
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
-            ctk.CTkLabel(self.tab_content, text='Read-only check using winget. No software will be installed.').pack(pady=(0, 8))
-            button = ctk.CTkButton(self.tab_content, text='Check for Updates', width=200, height=36,
-                                   command=self.start_update_check)
-            button.pack(pady=6)
-            self.task_buttons.append(button)
+            ctk.CTkLabel(self.tab_content, text='Check for available updates or install all available upgrades using winget.').pack(pady=(0, 8))
+            controls = ctk.CTkFrame(self.tab_content, fg_color='transparent')
+            controls.pack(pady=6)
+            check_button = ctk.CTkButton(controls, text='Check for Updates', width=200, height=36,
+                                         command=self.start_update_check)
+            check_button.pack(side='left', padx=6)
+            update_button = ctk.CTkButton(controls, text='Update All', width=200, height=36,
+                                          command=self.start_upgrade_all)
+            update_button.pack(side='left', padx=6)
+            self.task_buttons.extend((check_button, update_button))
         elif tab == 'Network':
             ctk.CTkLabel(self.tab_content, text='DNS Resolver Maintenance',
                          font=('Segoe UI', 17, 'bold')).pack(pady=10)
@@ -529,6 +534,33 @@ class RaksToolKit(ctk.CTk):
         task = 'Check for Updates'
         try:
             code = check_updates(lambda line: self.events.put(('line', line)))
+            self.events.put(('done', task, code))
+        except Exception as exc:
+            self.events.put(('error', task, str(exc)))
+
+    def start_upgrade_all(self):
+        if self.running_task:
+            return
+        if not messagebox.askyesno(
+            'Confirm software upgrades',
+            'Run winget upgrade --all?\n\n'
+            'This may download and install updates, close running applications, '
+            'request administrator permission, or require a restart. '
+            'Some installers may ask for input. Save your work first.\n\n'
+            'Continue?'
+        ):
+            return
+        task = 'Update All'
+        self.running_task = task
+        self.set_maintenance_status('Installing available application updates...', '#e0b66a')
+        self.update_task_buttons()
+        self.append_log('\n--- Starting application upgrades (winget upgrade --all) ---')
+        threading.Thread(target=self.upgrade_all_worker, daemon=True).start()
+
+    def upgrade_all_worker(self):
+        task = 'Update All'
+        try:
+            code = upgrade_all(lambda line: self.events.put(('line', line)))
             self.events.put(('done', task, code))
         except Exception as exc:
             self.events.put(('error', task, str(exc)))

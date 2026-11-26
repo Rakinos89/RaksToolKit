@@ -1,21 +1,16 @@
-"""Read-only software update discovery using Windows Package Manager."""
-import os
+"""Windows Package Manager (winget) update discovery and installation."""
 import shutil
 import subprocess
 
 
-def check_updates(on_line):
-    """Stream winget's upgrade listing; return its exit code.
-
-    This command only lists upgrades and never installs packages.
-    """
+def _run_winget(arguments, on_line):
+    """Stream command output and return exit code; never invoke a shell."""
     executable = shutil.which('winget')
     if not executable:
         raise FileNotFoundError('winget was not found. Install or repair App Installer from Microsoft.')
     flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-    env = os.environ.copy()
     with subprocess.Popen(
-        [executable, 'upgrade', '--disable-interactivity'],
+        [executable, *arguments],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -23,9 +18,18 @@ def check_updates(on_line):
         errors='replace',
         bufsize=1,
         creationflags=flags,
-        env=env,
     ) as process:
         for line in process.stdout:
             if line.strip():
                 on_line(line.rstrip())
         return process.wait()
+
+
+def check_updates(on_line):
+    """List upgrades without installing them."""
+    return _run_winget(['upgrade', '--disable-interactivity'], on_line)
+
+
+def upgrade_all(on_line):
+    """Install available upgrades, allowing installer prompts where required."""
+    return _run_winget(['upgrade', '--all'], on_line)
