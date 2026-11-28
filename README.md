@@ -176,8 +176,8 @@ Some tests involving Windows symbolic links may be skipped when the required per
 | v0.9 | Portable Windows executable, application icon, distribution ZIP, refresh feedback | Complete |
 | Pre-v1.0 | Documentation, license, automated testing, reliability and UI improvements | Complete |
 | v1.0.0 | Stable release, RaksToolKit branding, and final packaging | Released |
-| v1.1.0 | AMD GPU monitoring, Network Overview, Software Updates, and UI improvements | Release preparation |
-| Future | Further hardware compatibility testing and feature improvements | Planned |
+| v1.1.0 | AMD GPU monitoring, Network overview, Software Updates, and UI improvements | Released |
+| v1.2.0 | AMD GPU hardware validation, expanded hardware monitoring, and disk health monitoring | In development |
 
 ## Building a Windows Release
 
@@ -202,10 +202,13 @@ The script uses PyInstaller from the virtual environment, bundles the applicatio
 
 ## Project Status
 
-**Latest published stable version: v1.0.0**  
-**Next release: v1.1.0 (in preparation)**
+**Latest published stable version: v1.1.0**
 
-RaksToolKit is under active development. GPU monitoring availability varies by hardware and driver. AMD monitoring still requires validation on real AMD graphics hardware.
+**Next release: v1.2.0 (in development)**
+
+RaksToolKit is under active development. Version 1.2.0 will focus on AMD GPU hardware validation, expanded hardware monitoring, and disk health monitoring.
+
+AMD GPU monitoring has passed automated tests but still requires validation on physical AMD graphics hardware. Monitoring capabilities may vary depending on hardware and driver support.
 
 ## Disclaimer
 

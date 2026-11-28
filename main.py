@@ -14,7 +14,8 @@ import psutil
 from modules.activity import LOG_PATH, read_recent, record
 from modules.privacy import load_privacy, save_privacy, redact
 from modules.appearance import ACCENTS, DEFAULT_ACCENT, load_accent, save_accent
-from modules.hardware import cpu_name, windows_name
+from modules.hardware_monitor import system_snapshot, volume_snapshot
+from modules.hardware_format import format_system, format_volume, format_percent
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
 from modules.cleanup import locations, scan, clean
 from modules.network import flush_dns
@@ -22,7 +23,7 @@ from modules.network_overview import get_network_overview
 from modules.software_updates import check_updates, upgrade_all, upgrade_package, parse_upgrade_table
 from modules.system import REPAIR_COMMANDS, is_admin, relaunch_as_admin
 
-VERSION = '1.1.0'
+VERSION = '1.2.0-dev'
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('green')
 
@@ -43,7 +44,7 @@ class RaksToolKit(ctk.CTk):
                 self.iconbitmap(str(icon_path))
             except (OSError, TclError):
                 pass  # Keep the application usable if Windows rejects the icon.
-        self.geometry('1120x760')
+        self.geometry("1440x1000")
         self.minsize(900, 600)
         self.admin = is_admin()
         self.privacy_mode = load_privacy()
@@ -82,6 +83,7 @@ class RaksToolKit(ctk.CTk):
         self.power_plan_refresh_busy = False
         self.power_plan_buttons = []
         self.last_gaming_refresh = 0
+        self.dashboard_busy = False
         self.network_refreshing = False
         self.network_snapshot = None
         self.grid_columnconfigure(1, weight=1)
@@ -459,44 +461,92 @@ class RaksToolKit(ctk.CTk):
             self.events.put(('error', 'Change power plan', str(exc)))
 
     def build_dashboard(self):
-        ctk.CTkLabel(self.content, text='Live System Overview', font=('Segoe UI', 18, 'bold')).pack(pady=(0, 12))
-        cards = ctk.CTkFrame(self.content, fg_color='transparent')
-        cards.pack(fill='x', padx=25)
+        scroll = ctk.CTkScrollableFrame(self.content, fg_color='transparent')
+        scroll.pack(fill='both', expand=True, padx=18, pady=(0, 12))
+        ctk.CTkLabel(scroll, text='Live System Overview', font=('Segoe UI', 18, 'bold')).pack(pady=(0, 12))
+        cards = ctk.CTkFrame(scroll, fg_color='transparent')
+        cards.pack(fill='x')
         self.stats = {}
+        primary, _ = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
         for title in ('CPU', 'RAM', 'C: Drive'):
             card = ctk.CTkFrame(cards)
             card.pack(side='left', expand=True, fill='both', padx=6)
             ctk.CTkLabel(card, text=title, font=('Segoe UI', 16, 'bold')).pack(pady=(18, 5))
             label = ctk.CTkLabel(card, text='Loading...', font=('Segoe UI', 22))
             label.pack(pady=5)
-            bar = ctk.CTkProgressBar(card)
+            bar = ctk.CTkProgressBar(card, progress_color=primary)
+            bar.set(0)
             bar.pack(fill='x', padx=16, pady=(8, 20))
             self.stats[title] = (label, bar)
-        info = ctk.CTkFrame(self.content)
-        info.pack(fill='x', padx=30, pady=25)
-        details = [
-            ('Operating system', windows_name()),
-            ('Processor', cpu_name()),
-            ('CPU cores', f'{psutil.cpu_count(logical=False) or "?"} physical / {psutil.cpu_count() or "?"} logical'),
-            ('Total memory', f'{psutil.virtual_memory().total / (1024**3):.1f} GiB'),
-            ('Computer', platform.node()),
-        ]
-        for title, value in details:
+        info = ctk.CTkFrame(scroll)
+        info.pack(fill='x', padx=6, pady=15)
+        self.dashboard_details = {}
+        for title in ('Operating system', 'Processor', 'CPU cores', 'CPU frequency', 'Total memory', 'Available memory', 'Computer'):
             row = ctk.CTkFrame(info, fg_color='transparent')
             row.pack(fill='x', padx=18, pady=5)
             ctk.CTkLabel(row, text=title + ':', width=160, anchor='w').pack(side='left')
-            ctk.CTkLabel(row, text=self.display_text(value), anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
+            label = ctk.CTkLabel(row, text='Loading...', anchor='w', wraplength=490)
+            label.pack(side='left', fill='x', expand=True)
+            self.dashboard_details[title] = label
+        ctk.CTkLabel(scroll, text='Storage Volumes', font=('Segoe UI', 18, 'bold')).pack(pady=(0, 8))
+        self.dashboard_status = ctk.CTkLabel(scroll, text='Reading hardware...', text_color='gray70')
+        self.dashboard_status.pack()
+        self.volume_panel = ctk.CTkFrame(scroll, fg_color='transparent')
+        self.volume_panel.pack(fill='x', padx=6)
+        self.volume_cards = {}
 
     def update_dashboard(self):
+        if self.current_page != 'Dashboard' or self.dashboard_busy:
+            return
+        self.dashboard_busy = True
+        threading.Thread(target=self.dashboard_worker, daemon=True).start()
+
+    def dashboard_worker(self):
+        try:
+            self.events.put(('dashboard_result', system_snapshot(), volume_snapshot(), None))
+        except Exception as exc:
+            self.events.put(('dashboard_result', {}, [], str(exc)))
+
+    @staticmethod
+    def set_dashboard_metric(label, bar, value):
+        text = format_percent(value)
+        label.configure(text=text)
+        bar.set(value / 100 if text != 'N/A' else 0)
+
+    def render_dashboard(self, system, volumes, error=None):
         if self.current_page != 'Dashboard':
             return
-        values = {'CPU': psutil.cpu_percent(interval=None),
-                  'RAM': psutil.virtual_memory().percent,
-                  'C: Drive': psutil.disk_usage('C:\\').percent}
-        for name, value in values.items():
-            label, bar = self.stats[name]
-            label.configure(text=f'{value:.1f}%')
-            bar.set(value / 100)
+        data = format_system(system)
+        c_drive = next((v for v in volumes if v.get('device', '').rstrip('\\/').upper() == 'C:'), {})
+        for title, value in (('CPU', system.get('cpu_percent')), ('RAM', system.get('memory_percent')), ('C: Drive', c_drive.get('percent'))):
+            self.set_dashboard_metric(*self.stats[title], value)
+        details = {'Operating system': data['os_name'], 'Processor': data['cpu_name'],
+                   'CPU cores': f"{data['physical_cores']} physical / {data['logical_cores']} logical",
+                   'CPU frequency': data['cpu_frequency_mhz'], 'Total memory': data['memory_total_bytes'],
+                   'Available memory': data['memory_available_bytes'], 'Computer': platform.node()}
+        for title, value in details.items():
+            self.dashboard_details[title].configure(text=self.display_text(value))
+        self.dashboard_status.configure(text='Unable to read hardware.' if error else ('No mounted volumes available.' if not volumes else f'{len(volumes)} mounted volume(s)'))
+        primary, _ = ACCENTS.get(self.accent_color, ACCENTS[DEFAULT_ACCENT])
+        active = set()
+        for volume in volumes:
+            key = (volume.get('device'), volume.get('mountpoint'))
+            active.add(key)
+            if key not in self.volume_cards:
+                card = ctk.CTkFrame(self.volume_panel)
+                card.pack(fill='x', pady=4)
+                label = ctk.CTkLabel(card, text='', anchor='w')
+                label.pack(fill='x', padx=14, pady=(8, 2))
+                bar = ctk.CTkProgressBar(card, progress_color=primary)
+                bar.pack(fill='x', padx=14, pady=(2, 10))
+                self.volume_cards[key] = (card, label, bar)
+            _, label, bar = self.volume_cards[key]
+            v = format_volume(volume)
+            label.configure(text=self.display_text(f"{v['device']}  |  {v['filesystem']}  |  {v['used_bytes']} / {v['total_bytes']} used  |  {v['free_bytes']} free  |  {v['percent']}"))
+            bar.set(volume['percent'] / 100 if v['percent'] != 'N/A' else 0)
+        for key in list(self.volume_cards):
+            if key not in active:
+                self.volume_cards.pop(key)[0].destroy()
 
     def refresh_gaming_live(self):
         """Poll only while the Gaming page is visible; never overlap workers."""
@@ -878,7 +928,11 @@ class RaksToolKit(ctk.CTk):
         try:
             while True:
                 event = self.events.get_nowait()
-                if event[0] == 'network_overview_result':
+                if event[0] == 'dashboard_result':
+                    _, system, volumes, error = event
+                    self.dashboard_busy = False
+                    self.render_dashboard(system, volumes, error)
+                elif event[0] == 'network_overview_result':
                     _, data, error = event
                     self.network_refreshing = False
                     if data is not None:
