@@ -14,6 +14,7 @@ import psutil
 from modules.activity import LOG_PATH, read_recent, record
 from modules.privacy import load_privacy, save_privacy, redact
 from modules.appearance import ACCENTS, DEFAULT_ACCENT, load_accent, save_accent
+from modules.disk_health import disk_health_snapshot
 from modules.hardware_monitor import system_snapshot, volume_snapshot
 from modules.hardware_format import format_system, format_volume, format_percent
 from modules.gaming import gpu_info, game_processes, power_plans, activate_power_plan, tcp_latency
@@ -84,6 +85,7 @@ class RaksToolKit(ctk.CTk):
         self.power_plan_buttons = []
         self.last_gaming_refresh = 0
         self.dashboard_busy = False
+        self.storage_busy = False
         self.network_refreshing = False
         self.network_snapshot = None
         self.grid_columnconfigure(1, weight=1)
@@ -95,7 +97,7 @@ class RaksToolKit(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text='RaksToolKit', font=('Segoe UI', 25, 'bold')).pack(pady=(28, 4))
         ctk.CTkLabel(self.sidebar, text=f'v{VERSION}  •  ' + ('Administrator' if self.admin else 'Standard user'),
                      text_color='#70c080' if self.admin else '#e0b66a').pack(pady=(0, 28))
-        for name in ('Dashboard', 'Maintenance', 'Gaming', 'Network', 'Settings', 'Activity'):
+        for name in ('Dashboard', 'Storage', 'Maintenance', 'Gaming', 'Network', 'Settings', 'Activity'):
             ctk.CTkButton(self.sidebar, text=name, height=39,
                           command=lambda n=name: self.show_page(n)).pack(fill='x', padx=16, pady=5)
 
@@ -117,6 +119,8 @@ class RaksToolKit(ctk.CTk):
         if page == 'Dashboard':
             self.build_dashboard()
             self.update_dashboard()
+        elif page == 'Storage':
+            self.build_storage()
         elif page == 'Maintenance':
             self.build_maintenance()
         elif page == 'Gaming':
@@ -192,6 +196,99 @@ class RaksToolKit(ctk.CTk):
 
     def display_text(self, value):
         return redact(value, self.privacy_mode)
+
+    def build_storage(self):
+        ctk.CTkLabel(self.content, text='Physical Drive Health (read-only)',
+                     text_color='gray70').pack(pady=(0, 8))
+        controls = ctk.CTkFrame(self.content, fg_color='transparent')
+        controls.pack(pady=5)
+        self.storage_refresh_button = ctk.CTkButton(
+            controls, text='Refresh Disk Health', command=self.refresh_storage)
+        self.storage_refresh_button.pack(side='left', padx=5)
+        if not self.admin:
+            ctk.CTkButton(controls, text='Restart as Administrator',
+                          command=self.request_elevation).pack(side='left', padx=5)
+        self.storage_status = ctk.CTkLabel(self.content, text='Reading physical drives...',
+                                           text_color='gray70')
+        self.storage_status.pack(pady=8)
+        self.storage_panel = ctk.CTkScrollableFrame(self.content, fg_color='transparent')
+        self.storage_panel.pack(fill='both', expand=True, padx=18, pady=(0, 12))
+        if self.storage_busy:
+            self.storage_refresh_button.configure(state='disabled')
+        else:
+            self.refresh_storage()
+
+    def refresh_storage(self):
+        if self.current_page != 'Storage' or self.storage_busy:
+            return
+        self.storage_busy = True
+        self.storage_refresh_button.configure(state='disabled')
+        self.storage_status.configure(text='Reading physical drives...', text_color='gray70')
+        for child in self.storage_panel.winfo_children():
+            child.destroy()
+        threading.Thread(target=self.storage_worker, daemon=True).start()
+
+    def storage_worker(self):
+        try:
+            self.events.put(('storage_result', disk_health_snapshot()))
+        except Exception:
+            self.events.put(('storage_result', {'status': 'unavailable', 'disks': []}))
+
+    @staticmethod
+    def storage_value(value, suffix=''):
+        return 'N/A' if value is None or value == '' else f'{value}{suffix}'
+
+    def render_storage(self, data):
+        if self.current_page != 'Storage':
+            return
+        self.storage_refresh_button.configure(state='normal')
+        for child in self.storage_panel.winfo_children():
+            child.destroy()
+        status = data.get('status')
+        if status != 'ok':
+            messages = {'timeout': 'Disk health query timed out. Try refreshing.',
+                        'unsupported_platform': 'Disk health is supported on Windows only.',
+                        'invalid_response': 'Windows returned an invalid disk health response.'}
+            self.storage_status.configure(text=messages.get(status, 'Disk health information unavailable.'),
+                                          text_color='#f08080')
+            return
+        disks = data.get('disks', [])
+        self.storage_status.configure(text=f'{len(disks)} physical drive(s) detected' if disks else
+                                      'No physical drives detected.', text_color='gray70')
+        for disk in disks:
+            card = ctk.CTkFrame(self.storage_panel, corner_radius=12)
+            card.pack(fill='x', padx=6, pady=7)
+            value = self.storage_value
+            ctk.CTkLabel(card, text=self.display_text(disk.get('model') or 'Unknown drive'),
+                         font=('Segoe UI', 18, 'bold')).pack(anchor='w', padx=18, pady=(12, 4))
+            size = disk.get('size_bytes')
+            capacity = 'N/A' if size is None else f'{size / 1024**3:.2f} GiB'
+            ctk.CTkLabel(card, text=f"{capacity}  |  {value(disk.get('media_type'))}  |  {value(disk.get('bus_type'))}",
+                         text_color='gray70').pack(anchor='w', padx=18)
+            health = value(disk.get('health_status'))
+            color = '#70c080' if health.lower() == 'healthy' else ('gray70' if health == 'N/A' else '#e0b66a')
+            ctk.CTkLabel(card, text=f"Health: {health}  |  Operational status: {value(disk.get('operational_status'))}",
+                         text_color=color).pack(anchor='w', padx=18, pady=(5, 8))
+            metrics = ctk.CTkFrame(card, fg_color='transparent')
+            metrics.pack(fill='x', padx=18)
+            metrics.grid_columnconfigure((0, 1), weight=1)
+            for i, (label, key, suffix) in enumerate((
+                ('Temperature', 'temperature_c', ' °C'),
+                ('Reported max temperature', 'temperature_max_c', ' °C'),
+                ('Reported wear', 'wear_percent', '%'),
+                ('Power-on hours', 'power_on_hours', ' h'),
+                ('Total read errors', 'read_errors_total', ''),
+                ('Total write errors', 'write_errors_total', ''),
+                ('Uncorrected read errors', 'read_errors_uncorrected', ''),
+                ('Uncorrected write errors', 'write_errors_uncorrected', ''))):
+                ctk.CTkLabel(metrics, text=f"{label}: {value(disk.get(key), suffix)}", anchor='w').grid(
+                    row=i // 2, column=i % 2, sticky='ew', padx=4, pady=4)
+            reliability = disk.get('reliability_status')
+            note = {'permission_denied': 'Extended metrics require administrator access.',
+                    'available': 'Extended metrics available where reported by the drive.'}.get(
+                        reliability, 'Extended metrics unavailable for this drive.')
+            ctk.CTkLabel(card, text=note, text_color='gray70', wraplength=650).pack(
+                anchor='w', padx=18, pady=(8, 12))
 
     def build_network_overview(self):
         """Read-only adapter overview, refreshed off the UI thread."""
@@ -932,6 +1029,9 @@ class RaksToolKit(ctk.CTk):
                     _, system, volumes, error = event
                     self.dashboard_busy = False
                     self.render_dashboard(system, volumes, error)
+                elif event[0] == 'storage_result':
+                    self.storage_busy = False
+                    self.render_storage(event[1])
                 elif event[0] == 'network_overview_result':
                     _, data, error = event
                     self.network_refreshing = False
